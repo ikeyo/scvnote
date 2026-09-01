@@ -1,0 +1,19 @@
+# Local development only. Docker Compose loads this file automatically.
+# Do NOT copy it to the NAS - there, compose.yaml runs alone.
+#
+#   docker compose up -d                        -> Postgres only (app runs on host via `npm run dev`)
+#   docker compose --profile prod-test up --build -> full production stack, exactly like the NAS
+services:
+  db:
+    ports:
+      # 5432 / 5433 are already taken by other projects on this machine
+      - "5434:5432"
+
+  migrate:
+    profiles: ["prod-test"]
+
+  app:
+    profiles: ["prod-test"]
+    volumes:
+      # bind-mount instead of a named volume so uploads are visible in the repo
+      - ./data/attachments:/data/attachments

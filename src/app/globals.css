@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --surface: #f7f7f8;
+  --border: #e4e4e7;
+  --foreground: #18181b;
+  --muted: #71717a;
+  --accent: #2563eb;
+  --danger: #dc2626;
+  --code-bg: #f4f4f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0b0d;
+    --surface: #141417;
+    --border: #27272a;
+    --foreground: #ededed;
+    --muted: #a1a1aa;
+    --accent: #60a5fa;
+    --danger: #f87171;
+    --code-bg: #1c1c20;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* ------------------------------- editor ---------------------------------- */
+
+.ProseMirror {
+  outline: none;
+  min-height: 24rem;
+  line-height: 1.7;
+}
+.ProseMirror > * + * { margin-top: 0.75em; }
+.ProseMirror h1 { font-size: 1.75rem; font-weight: 700; margin-top: 1.4em; }
+.ProseMirror h2 { font-size: 1.4rem; font-weight: 700; margin-top: 1.3em; }
+.ProseMirror h3 { font-size: 1.15rem; font-weight: 600; margin-top: 1.2em; }
+.ProseMirror ul { list-style: disc; padding-left: 1.5rem; }
+.ProseMirror ol { list-style: decimal; padding-left: 1.5rem; }
+.ProseMirror li > p { margin: 0; }
+.ProseMirror blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  color: var(--muted);
+}
+.ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+.ProseMirror code {
+  background: var(--code-bg);
+  border-radius: 0.25rem;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.875em;
+}
+.ProseMirror pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.ProseMirror pre code { background: none; padding: 0; font-size: inherit; }
+.ProseMirror img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* syntax highlighting - lowlight emits highlight.js class names */
+.hljs-comment, .hljs-quote { color: var(--muted); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type { color: #c678dd; }
+.hljs-string, .hljs-attr, .hljs-addition { color: #98c379; }
+.hljs-number, .hljs-symbol, .hljs-built_in { color: #d19a66; }
+.hljs-title, .hljs-section, .hljs-name { color: #61afef; }
+.hljs-variable, .hljs-template-variable { color: #e06c75; }
+.hljs-deletion { color: #e06c75; }

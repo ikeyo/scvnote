@@ -1,0 +1,156 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pg_trgm]
+}
+
+/// Single user - this is a personal app, there is no sign-up flow.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  /// Vault (Secret) crypto material. The key itself never leaves the browser.
+  /// base64 salt for PBKDF2 key derivation
+  vaultSalt        String?
+  /// AES-GCM ciphertext of a known probe string, used to verify the master password
+  vaultCheckCipher String?
+  vaultCheckIv     String?
+}
+
+/// 작업 단위. 노트와 비밀번호가 여기에 묶인다. 미분류(projectId = null)도 허용한다.
+model Project {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  /// 사이드바 점 색상 (#rrggbb)
+  color       String?
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  notes   Note[]
+  secrets Secret[]
+  todos   Todo[]
+
+  @@index([archived, name])
+}
+
+enum NoteKind {
+  NOTE
+  WORKLOG
+  SNIPPET
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  kind      NoteKind @default(NOTE)
+  title     String
+  /// TipTap document (ProseMirror JSON)
+  content   Json     @default("{}")
+  /// Flattened plain text of `content`, kept in sync on write. Used for full-text search.
+  contentText String @default("")
+  pinned    Boolean  @default(false)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  tags        Tag[]
+  attachments Attachment[]
+  todos       Todo[]
+
+  @@index([kind, updatedAt])
+  @@index([archived, updatedAt])
+  @@index([projectId, updatedAt])
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([contentText(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  notes Note[]
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  noteId       String
+  note         Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  /// Name shown to the user
+  originalName String
+  /// Name on disk under ATTACHMENTS_DIR
+  storedName   String   @unique
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+
+  @@index([noteId])
+}
+
+/// Credentials. `secretCipher` is encrypted in the browser - the server never
+/// sees the plaintext and cannot decrypt it. See docs/security.md.
+model Secret {
+  id        String   @id @default(cuid())
+  title     String
+  username  String?
+  url       String?
+  memo      String?
+  /// base64 AES-GCM ciphertext
+  secretCipher String
+  /// base64 AES-GCM IV (12 bytes)
+  secretIv     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([title])
+  @@index([projectId, title])
+}
+
+/// 할 일의 성격. 오류사항 / 개선사항 / 아이디어 / 일반 할 일.
+enum TodoKind {
+  BUG
+  IMPROVEMENT
+  IDEA
+  TASK
+}
+
+enum TodoStatus {
+  TODO
+  DOING
+  DONE
+}
+
+/// 프로젝트별 할 일. 노트와 마찬가지로 미분류(projectId = null)를 허용한다.
+model Todo {
+  id     String     @id @default(cuid())
+  kind   TodoKind   @default(TASK)
+  status TodoStatus @default(TODO)
+  title  String
+  detail String?
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  /// 이 할 일이 나온 노트. 노트가 지워져도 할 일은 남는다.
+  noteId String?
+  note   Note?   @relation(fields: [noteId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  doneAt    DateTime?
+
+  @@index([projectId, status])
+  @@index([status, updatedAt])
+}

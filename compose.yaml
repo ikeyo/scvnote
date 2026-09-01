@@ -1,0 +1,58 @@
+# ScvNote - base stack. This file alone is what gets deployed to the NAS.
+name: scvnote
+
+x-db-url: &db-url
+  postgresql://${POSTGRES_USER:-scvnote}:${POSTGRES_PASSWORD:-scvnote}@db:5432/${POSTGRES_DB:-scvnote}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scvnote}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scvnote}
+      POSTGRES_DB: ${POSTGRES_DB:-scvnote}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scvnote} -d ${POSTGRES_DB:-scvnote}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # one-shot: applies pending migrations, then exits
+  migrate:
+    build:
+      context: .
+      target: migrator
+    image: scvnote-migrator:latest
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: *db-url
+
+  app:
+    build:
+      context: .
+      target: runner
+    image: scvnote-app:latest
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: *db-url
+      ATTACHMENTS_DIR: /data/attachments
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required - see .env.example}
+      MCP_TOKEN: ${MCP_TOKEN:-}
+    volumes:
+      - attachments:/data/attachments
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  pgdata:
+  attachments:
