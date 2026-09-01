@@ -3,6 +3,19 @@
 개인용 작업일지 / 노트 / 코드 스니펫 / 비밀번호 보관 앱.
 로컬에서 개발하고, 완성되면 같은 이미지를 NAS 도커에 올려 돌린다.
 
+## NAS에 설치하기 (가장 빠른 길)
+
+시놀로지(x86) 기준. SSH로 접속해 세 줄이면 끝난다.
+
+```bash
+git clone https://github.com/ikeyo/scvnote.git
+cd scvnote
+./scripts/setup-nas.sh
+```
+
+`.env`(비밀번호·토큰) 생성부터 빌드·기동·헬스체크까지 스크립트가 대신 한다.
+자세한 사전 준비(SSH 활성화, Container Manager 등)와 문제 해결은 [docs/deploy-nas.md](docs/deploy-nas.md).
+
 ## 스택
 
 | 영역 | 선택 |

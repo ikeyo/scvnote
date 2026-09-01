@@ -1,0 +1,3 @@
+# Force LF regardless of platform - shell scripts break on Windows CRLF
+# (the shebang line becomes "#!/usr/bin/env bash\r", which no Linux loader accepts).
+*.sh text eol=lf

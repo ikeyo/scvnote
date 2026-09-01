@@ -10,8 +10,8 @@
 
 ## 시놀로지(x86) 설치 절차
 
-레지스트리 계정 없이 **NAS에서 직접 빌드**하는 방식이다. 처음 설치할 때 손이 제일 적게 간다.
-Celeron 계열 CPU면 빌드에 5~15분 걸릴 수 있지만, 실패한 게 아니라 원래 그렇다.
+저장소가 공개돼 있어 NAS에서 바로 `git clone`으로 받는다. 레지스트리 계정도,
+파일을 따로 전송할 필요도 없다.
 
 ### 1) DSM에서 준비
 
@@ -20,108 +20,85 @@ Celeron 계열 CPU면 빌드에 5~15분 걸릴 수 있지만, 실패한 게 아�
    설치돼 있는지 확인한다. 없으면 설치한다
 3. **File Station**에서 공유 폴더를 하나 만든다 — 예: `docker` (아래는 `/volume1/docker` 기준)
 
-### 2) 소스를 NAS로 옮긴다
+### 2) 빠른 설치 — 클론 + 스크립트 한 번
 
-이 저장소는 아직 GitHub 같은 원격에 올라가 있지 않다. 지금은 로컬(이 PC)에서 압축해
-SCP로 보낸다. `node_modules`, `.next`, 로컬 데이터는 뺀다 — NAS에서 새로 설치되고,
-데이터도 새로 시작하기 때문이다.
-
-이 PC(Windows, Git Bash)에서:
-
-```bash
-cd "D:/work/ScvNote"
-tar --exclude=node_modules --exclude=.next --exclude=data --exclude=.git \
-    -czf /tmp/scvnote-src.tar.gz .
-
-scp /tmp/scvnote-src.tar.gz <NAS계정>@<NAS주소>:/volume1/docker/
-```
-
-NAS에 SSH로 접속해 압축을 푼다:
+NAS에 SSH로 접속해서:
 
 ```bash
 ssh <NAS계정>@<NAS주소>
-mkdir -p /volume1/docker/scvnote
-tar -xzf /volume1/docker/scvnote-src.tar.gz -C /volume1/docker/scvnote
-rm /volume1/docker/scvnote-src.tar.gz
-cd /volume1/docker/scvnote
+cd /volume1/docker
+git clone https://github.com/ikeyo/scvnote.git
+cd scvnote
+./scripts/setup-nas.sh
 ```
 
-> 앞으로 코드를 바꿀 때마다 이 tar/scp를 반복하는 건 번거롭다. 자리잡으면
-> **GitHub에 푸시해두고 NAS에서 `git clone` / `git pull`로 받는 방식**으로 바꾸는 걸 권한다.
-> 그러면 이 2번 단계가 `git pull` 한 줄로 줄어든다.
+`scripts/setup-nas.sh`가 하는 일:
 
-### 3) NAS 전용 `.env`를 만든다
+1. `docker`/`docker compose(v2)`가 있는지 확인
+2. `.env`가 없으면 `POSTGRES_PASSWORD` / `AUTH_SECRET` / `MCP_TOKEN`을
+   `openssl rand`로 **자동 생성**해 채운다 (이미 있으면 건드리지 않는다 — 여러 번 돌려도 안전)
+3. `docker compose up -d --build`로 빌드·기동
+4. 마이그레이션 로그와 `/api/health`를 확인
+5. 접속 주소와 **MCP 토큰을 화면에 출력**한다 (Claude Code/Codex 등록에 필요, 이때만 보인다)
 
-로컬 `.env`를 그대로 옮기면 안 된다 — 로컬 전용 값(포트 3100/5434, 개발용 토큰)이 들어 있다.
-NAS에서 새로 만든다.
+Celeron 계열 CPU면 빌드에 5~15분 걸릴 수 있다 — 실패한 게 아니라 원래 그렇다.
+끝나면 뜨는 주소로 브라우저에서 접속해 첫 계정을 만들면 끝이다.
+
+이후 코드가 바뀌면 업데이트는 이 두 줄이다:
 
 ```bash
-# NAS 쉘에서, /volume1/docker/scvnote 안에서
-cp .env.example .env
+git pull
+./scripts/setup-nas.sh
 ```
 
-값을 미리 생성해둔다 (이 PC의 Git Bash에서 실행해도 되고, NAS 쉘에서 해도 된다):
+`.env`는 그대로 재사용되고, 컨테이너만 새로 빌드된다.
 
-```bash
-openssl rand -base64 24   # POSTGRES_PASSWORD 용
-openssl rand -base64 32   # AUTH_SECRET 용
-openssl rand -hex 32      # MCP_TOKEN 용
-```
-
-`.env`를 열어(`vi .env` 또는 File Station의 텍스트 편집기) 아래 값을 채운다:
-
-```
-POSTGRES_USER=scvnote
-POSTGRES_PASSWORD=<위에서 만든 값>
-POSTGRES_DB=scvnote
-
-APP_PORT=3000
-
-AUTH_SECRET=<위에서 만든 값>
-MCP_TOKEN=<위에서 만든 값>
-
-ADMIN_EMAIL=본인 이메일
-```
-
-`DATABASE_URL`과 `ATTACHMENTS_DIR`은 `compose.yaml`이 컨테이너 안에서 직접 채우므로
-NAS용 `.env`에는 넣지 않아도 된다 (그 두 값은 로컬 개발 전용이다).
-
-### 4) 빌드하고 기동한다
-
-```bash
-# NAS 쉘에서
-docker compose version   # v2인지 확인. 없으면 Container Manager를 최신으로 업데이트
-docker compose up -d --build
-```
-
-`migrate` 컨테이너가 먼저 돌아 마이그레이션을 적용하고 종료한 뒤 `app`이 뜬다. 진행 확인:
-
-```bash
-docker compose ps
-docker compose logs -f migrate    # "No pending migrations" 또는 적용 로그가 보이면 정상
-docker compose logs -f app
-```
-
-### 5) 확인
+### 3) 확인
 
 ```bash
 curl http://localhost:3000/api/health
 # {"ok":true,"db":"up","notes":0}
 ```
 
-같은 네트워크의 다른 기기에서 `http://<NAS의 LAN IP>:3000`으로 접속해 첫 계정을 만든다.
-Container Manager 앱(DSM 7.2+)을 쓴다면 좌측 **프로젝트** 메뉴에서 같은 컨테이너들이
-GUI로도 보인다 — 다만 이 프로젝트는 SSH + CLI 기준으로 검증했다.
+같은 네트워크의 다른 기기에서 `http://<NAS의 LAN IP>:3000`으로 접속한다.
+
+Container Manager는 도커 엔진 위의 GUI일 뿐, 뒤에서 도는 컨테이너는 SSH로 띄운 것과 동일하다.
+설치가 끝나면 좌측 **프로젝트** 메뉴에서 같은 컨테이너들이 그대로 보이고, 이후 시작/정지/로그
+확인은 GUI로 해도 된다 — **최초 설치와 `.env` 생성만 SSH + `setup-nas.sh`로 하는 걸 권한다.**
+Container Manager의 compose 파서가 이 프로젝트가 쓰는 `depends_on.condition:
+service_completed_successfully`(migrate 완료 후 app 시작) 같은 문법을 버전에 따라 못 받을 수
+있어서다.
 
 ### 시놀로지에서 자주 걸리는 것
 
 - **`docker compose`가 없고 `docker-compose`(구버전, 하이픈)만 있다** — Container Manager
   패키지를 최신으로 올리면 Compose v2가 같이 들어온다. 구버전 v1은 이 프로젝트가 쓰는
   `condition: service_completed_successfully`(migrate 완료 후 app 시작)를 지원하지 않을 수 있다
-- **포트 3000이 이미 다른 패키지가 쓰고 있다** — `.env`의 `APP_PORT`를 다른 값(예: 3800)으로
-  바꾸고 `docker compose up -d`를 다시 실행한다
+- **포트 3000이 이미 다른 패키지가 쓰고 있다** — 스크립트 실행 전에
+  `APP_PORT=3800 ./scripts/setup-nas.sh` 처럼 환경변수로 넘기거나, `.env` 생성 후
+  `APP_PORT`를 고쳐 `docker compose up -d`를 다시 실행한다
 - **빌드가 느리다** — Celeron 계열은 `npm run build` 단계가 특히 느리다. 기다리면 끝난다.
   급하면 아래 "일반 절차"의 B안(로컬 빌드 → tar로 옮기기)으로 바꾼다
+- **스크립트 실행 권한 오류(`Permission denied`)** — `chmod +x scripts/setup-nas.sh` 후 다시 실행
+
+### 수동으로 하고 싶을 때
+
+스크립트가 하는 일을 손으로 그대로 해도 된다.
+
+```bash
+cd /volume1/docker/scvnote
+cp .env.example .env
+# .env를 열어 POSTGRES_PASSWORD / AUTH_SECRET / MCP_TOKEN을 채운다
+#   openssl rand -hex 24      (POSTGRES_PASSWORD - base64는 쓰지 않는다. "/" 가 섞이면
+#                              compose.yaml이 만드는 DATABASE_URL이 깨진다)
+#   openssl rand -base64 32   (AUTH_SECRET)
+#   openssl rand -hex 32      (MCP_TOKEN)
+docker compose up -d --build
+docker compose logs -f migrate
+```
+
+`DATABASE_URL`과 `ATTACHMENTS_DIR`은 `compose.yaml`이 컨테이너 안에서 직접 채우므로
+NAS용 `.env`에는 넣지 않아도 된다 (그 두 값은 로컬 개발 전용이다).
 
 ### 다음 단계
 
@@ -185,7 +162,7 @@ compose.yaml       # override 는 제외
 `.env`에서 반드시 바꿀 값:
 
 ```
-POSTGRES_PASSWORD=<강한 임의 문자열>
+POSTGRES_PASSWORD=<openssl rand -hex 24 결과 - base64는 쓰지 않는다, "/" 가 섞이면 DATABASE_URL이 깨진다>
 AUTH_SECRET=<openssl rand -base64 32 결과>
 MCP_TOKEN=<openssl rand -hex 32 결과>
 APP_PORT=3000

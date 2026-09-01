@@ -44,3 +44,8 @@ next-env.d.ts
 /data
 /src/generated
 !.env.example
+
+# local-only compose override (gates app/migrate behind the prod-test profile,
+# hardcodes a dev-only db port). Docker Compose auto-loads this file if it's
+# present, so it must never reach the NAS via git clone - see compose.override.yaml
+/compose.override.yaml
