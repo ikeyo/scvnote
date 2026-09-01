@@ -4,7 +4,12 @@ import { HttpError, route } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-/** Creates the one and only account. Refuses once an account exists. */
+/**
+ * Creates the very first account. Refuses once any account exists - after
+ * that, new accounts only come from an admin-issued invite link
+ * (`/api/invites/[token]/accept`). The first account is automatically the
+ * site admin, since there's no one else yet to grant that role.
+ */
 export const POST = route(async (req: Request) => {
   if (!(await needsSetup())) throw new HttpError(409, "계정이 이미 존재합니다");
 
@@ -13,7 +18,7 @@ export const POST = route(async (req: Request) => {
   if (!password || password.length < 8) throw new HttpError(400, "비밀번호는 8자 이상이어야 합니다");
 
   const user = await prisma.user.create({
-    data: { email, passwordHash: await hashPassword(password) },
+    data: { email, passwordHash: await hashPassword(password), isAdmin: true },
   });
   await createSession(user.id);
   return Response.json({ ok: true, email: user.email });

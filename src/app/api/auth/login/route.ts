@@ -16,6 +16,7 @@ export const POST = route(async (req: Request) => {
     : await verifyPassword(password, "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$AAAA");
 
   if (!user || !ok) throw new HttpError(401, "이메일 또는 비밀번호가 올바르지 않습니다");
+  if (user.disabledAt) throw new HttpError(403, "비활성화된 계정입니다");
 
   await createSession(user.id);
   return Response.json({ ok: true });

@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/db";
-import { HttpError } from "@/lib/api";
+import { ownedOrMemberWhere, requireNoteAccess } from "@/lib/access";
+import { projectFilter } from "@/lib/projects";
 import { TodoKind, TodoStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -23,6 +23,7 @@ export const TODO_SELECT = {
   createdAt: true,
   updatedAt: true,
   doneAt: true,
+  ownerId: true,
   project: { select: { id: true, name: true, color: true } },
   note: { select: { id: true, title: true } },
 } satisfies Prisma.TodoSelect;
@@ -37,21 +38,56 @@ export const TODO_ORDER: Prisma.TodoOrderByWithRelationInput[] = [
   { createdAt: "asc" },
 ];
 
+export async function buildTodoWhere(
+  userId: string,
+  params: {
+    q?: string | null;
+    kind?: string | null;
+    status?: string | null;
+    project?: string | null;
+    note?: string | null;
+    open?: boolean;
+  },
+): Promise<Prisma.TodoWhereInput> {
+  const and: Prisma.TodoWhereInput[] = [await ownedOrMemberWhere(userId)];
+
+  const pf = await projectFilter(userId, params.project);
+  if ("projectId" in pf) and.push({ projectId: pf.projectId });
+
+  const kind = parseTodoKind(params.kind);
+  if (kind) and.push({ kind });
+
+  if (params.note) and.push({ noteId: params.note });
+
+  const status = parseTodoStatus(params.status);
+  if (status) and.push({ status });
+  // the common view: everything still outstanding, regardless of kind
+  else if (params.open) and.push({ status: { not: TodoStatus.DONE } });
+
+  if (params.q?.trim()) {
+    const q = params.q.trim();
+    and.push({
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { detail: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  return { AND: and };
+}
+
 /**
- * Validates a `noteId` coming from a request body and returns the note's own
- * project, so a todo raised from a note can inherit it.
- * `null` / `undefined` mean "no link" and are not an error.
+ * Validates a `noteId` coming from a request body: the note must exist AND
+ * be visible to `userId`. Returns its project, so a todo raised from a note
+ * can inherit it. `null` / `undefined` mean "no link" and are not an error.
  */
 export async function resolveNoteLink(
+  userId: string,
   noteId: string | null | undefined,
 ): Promise<{ id: string; projectId: string | null } | null> {
   const id = noteId?.trim();
   if (!id) return null;
-
-  const note = await prisma.note.findUnique({
-    where: { id },
-    select: { id: true, projectId: true },
-  });
-  if (!note) throw new HttpError(404, "연결할 노트를 찾을 수 없습니다");
+  const note = await requireNoteAccess(userId, id); // 404s if missing or not visible
   return note;
 }

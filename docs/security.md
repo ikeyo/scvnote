@@ -6,6 +6,11 @@
 암·복호화는 브라우저에서만 일어나고, 서버는 암호문만 보관한다.
 DB가 통째로 유출돼도 비밀번호는 열리지 않는다.
 
+**계정마다 완전히 독립된 보관함이다.** 마스터 패스워드도, 암호화 키도, 저장된 항목도
+계정 간에 전혀 겹치지 않는다. 프로젝트를 같이 쓰는 멤버 사이에도 마찬가지다 - 비밀번호는
+프로젝트 공유 대상에서 의도적으로 제외했다. 이유와 전체 계정 구조는 [accounts.md](accounts.md)
+참고.
+
 실제 저장 형태 (`Secret` 테이블):
 
 ```
@@ -56,8 +61,16 @@ salt가 바뀌면 기존 항목이 전부 영구히 열리지 않기 때문이�
 ## 잃어버리면 복구 불가
 
 마스터 패스워드에는 복구 수단이 없다. 이건 설계상 그래야 하는 부분이다.
-분실 시 방법은 `Secret` 테이블을 비우고 `User.vaultSalt`를 NULL로 되돌린 뒤 다시 시작하는 것뿐이다.
+분실 시 방법은 **그 계정 소유**의 `Secret` 행을 비우고 `User.vaultSalt`를 NULL로 되돌린 뒤
+다시 시작하는 것뿐이다.
+
+**반드시 이메일로 대상 계정을 좁혀서 실행한다** - 여러 계정이 함께 쓰는 DB에서 `WHERE` 없이
+`Secret` 전체를 지우면 다른 모든 사람의 보관함도 같이 날아간다.
 
 ```bash
-docker compose exec db psql -U scvnote -d scvnote -c 'DELETE FROM "Secret"; UPDATE "User" SET "vaultSalt"=NULL,"vaultCheckCipher"=NULL,"vaultCheckIv"=NULL;'
+docker compose exec db psql -U scvnote -d scvnote -c "
+  DELETE FROM \"Secret\" WHERE \"ownerId\" = (SELECT id FROM \"User\" WHERE email = '분실한계정@example.com');
+  UPDATE \"User\" SET \"vaultSalt\"=NULL, \"vaultCheckCipher\"=NULL, \"vaultCheckIv\"=NULL
+    WHERE email = '분실한계정@example.com';
+"
 ```

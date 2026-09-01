@@ -35,11 +35,15 @@ cd scvnote
 `scripts/setup-nas.sh`가 하는 일:
 
 1. `docker`/`docker compose(v2)`가 있는지 확인
-2. `.env`가 없으면 `POSTGRES_PASSWORD` / `AUTH_SECRET` / `MCP_TOKEN`을
+2. `.env`가 없으면 `POSTGRES_PASSWORD` / `AUTH_SECRET`을
    `openssl rand`로 **자동 생성**해 채운다 (이미 있으면 건드리지 않는다 — 여러 번 돌려도 안전)
 3. `docker compose up -d --build`로 빌드·기동
 4. 마이그레이션 로그와 `/api/health`를 확인
-5. 접속 주소와 **MCP 토큰을 화면에 출력**한다 (Claude Code/Codex 등록에 필요, 이때만 보인다)
+5. 접속 주소를 화면에 출력한다
+
+첫 접속 시 만드는 계정이 자동으로 관리자가 된다. 그 뒤로 새 계정은 관리자가 `/admin`에서
+발급하는 초대 링크로만 늘어난다. MCP(Claude Code/Codex) 토큰은 로그인한 사람이 각자
+`/settings`에서 발급한다 - 자세한 내용은 [accounts.md](accounts.md), [mcp.md](mcp.md).
 
 Celeron 계열 CPU면 빌드에 5~15분 걸릴 수 있다 — 실패한 게 아니라 원래 그렇다.
 끝나면 뜨는 주소로 브라우저에서 접속해 첫 계정을 만들면 끝이다.
@@ -88,11 +92,10 @@ service_completed_successfully`(migrate 완료 후 app 시작) 같은 문법을 
 ```bash
 cd /volume1/docker/scvnote
 cp .env.example .env
-# .env를 열어 POSTGRES_PASSWORD / AUTH_SECRET / MCP_TOKEN을 채운다
+# .env를 열어 POSTGRES_PASSWORD / AUTH_SECRET을 채운다
 #   openssl rand -hex 24      (POSTGRES_PASSWORD - base64는 쓰지 않는다. "/" 가 섞이면
 #                              compose.yaml이 만드는 DATABASE_URL이 깨진다)
 #   openssl rand -base64 32   (AUTH_SECRET)
-#   openssl rand -hex 32      (MCP_TOKEN)
 docker compose up -d --build
 docker compose logs -f migrate
 ```
@@ -164,7 +167,6 @@ compose.yaml       # override 는 제외
 ```
 POSTGRES_PASSWORD=<openssl rand -hex 24 결과 - base64는 쓰지 않는다, "/" 가 섞이면 DATABASE_URL이 깨진다>
 AUTH_SECRET=<openssl rand -base64 32 결과>
-MCP_TOKEN=<openssl rand -hex 32 결과>
 APP_PORT=3000
 ```
 

@@ -26,6 +26,8 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [attachments, setAttachments] = useState<AttachmentInfo[]>(initial.attachments);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [shareToken, setShareToken] = useState<string | null>(initial.shareToken);
+  const [shareBusy, setShareBusy] = useState(false);
 
   const contentRef = useRef<unknown>(initial.content);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,6 +99,18 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
     if (res.ok) setAttachments((prev) => prev.filter((x) => x.id !== a.id));
   }
 
+  async function toggleShare() {
+    setShareBusy(true);
+    if (shareToken) {
+      const res = await fetch(`/api/notes/${initial.id}/share`, { method: "DELETE" });
+      if (res.ok) setShareToken(null);
+    } else {
+      const res = await fetch(`/api/notes/${initial.id}/share`, { method: "POST" });
+      if (res.ok) setShareToken((await res.json()).shareToken);
+    }
+    setShareBusy(false);
+  }
+
   async function remove() {
     if (!confirm("이 노트를 삭제할까요? 되돌릴 수 없습니다.")) return;
     const res = await fetch(`/api/notes/${initial.id}`, { method: "DELETE" });
@@ -139,6 +153,9 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
         </select>
 
         <Button onClick={() => setPinned((p) => !p)}>{pinned ? "고정 해제" : "고정"}</Button>
+        <Button onClick={toggleShare} disabled={shareBusy}>
+          {shareToken ? "공개 링크 끄기" : "공개 링크 켜기"}
+        </Button>
 
         <span className="ml-auto text-xs text-[var(--muted)]">
           {status === "saving" && "저장 중…"}
@@ -163,6 +180,20 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
         placeholder="태그 (쉼표로 구분)"
         className="mt-2 w-full bg-transparent text-sm text-[var(--muted)] outline-none"
       />
+
+      {shareToken && (
+        <p className="mt-2 rounded-md bg-[var(--surface)] px-3 py-2 text-xs text-[var(--muted)]">
+          로그인 없이 누구나 읽을 수 있는 링크가 켜져 있습니다:{" "}
+          <a
+            href={`/s/${shareToken}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[var(--accent)] hover:underline"
+          >
+            {typeof window !== "undefined" ? `${window.location.origin}/s/${shareToken}` : `/s/${shareToken}`}
+          </a>
+        </p>
+      )}
 
       <Editor
         content={initial.content}

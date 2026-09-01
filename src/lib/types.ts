@@ -24,7 +24,41 @@ export type ProjectSummary = {
   archived: boolean;
   kindCounts: KindCounts;
   openTodos: number;
+  /** `secrets` is scoped to the viewer - it's "how many of mine", not the project total. */
   _count: { notes: number; secrets: number; todos: number };
+};
+
+export type ProjectRoleValue = "OWNER" | "MEMBER";
+
+export type ProjectMemberRow = {
+  id: string;
+  role: ProjectRoleValue;
+  createdAt: string;
+  user: { id: string; email: string; isAdmin: boolean };
+};
+
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+  disabledAt: string | null;
+  createdAt: string;
+};
+
+export type InviteRow = {
+  id: string;
+  token: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  usedBy: { email: string } | null;
+};
+
+export type SessionInfo = {
+  authenticated: boolean;
+  isAdmin: boolean;
+  email: string | null;
+  needsSetup: boolean;
 };
 
 export type TodoKindValue = "BUG" | "IMPROVEMENT" | "IDEA" | "TASK";
@@ -73,6 +107,8 @@ export type NoteSummary = {
   archived: boolean;
   updatedAt: string;
   excerpt: string;
+  ownerId: string;
+  isShared: boolean;
   tags: { name: string }[];
   project: ProjectRef | null;
   _count: { attachments: number };
@@ -94,6 +130,9 @@ export type NoteDetail = {
   pinned: boolean;
   archived: boolean;
   updatedAt: string;
+  ownerId: string;
+  shareToken: string | null;
+  sharedAt: string | null;
   tags: { name: string }[];
   project: ProjectRef | null;
   todos: TodoItem[];

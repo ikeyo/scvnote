@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
+import { requireTodoAccess } from "@/lib/access";
 import { resolveProjectId } from "@/lib/projects";
 import { TODO_SELECT, parseTodoKind, parseTodoStatus, resolveNoteLink } from "@/lib/todos";
 import { TodoStatus } from "@/generated/prisma/enums";
@@ -11,8 +12,10 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export const PATCH = route(async (req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
+  await requireTodoAccess(userId, id);
+
   const body = (await req.json()) as {
     title?: string;
     detail?: string;
@@ -45,31 +48,26 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   }
 
   if (body.noteId !== undefined) {
-    const link = await resolveNoteLink(body.noteId);
+    const link = await resolveNoteLink(userId, body.noteId);
     data.note = link ? { connect: { id: link.id } } : { disconnect: true };
   }
 
   if (body.projectId !== undefined) {
-    const pid = await resolveProjectId(body.projectId);
+    const pid = await resolveProjectId(userId, body.projectId);
     data.project = pid ? { connect: { id: pid } } : { disconnect: true };
   }
 
   if (Object.keys(data).length === 0) throw new HttpError(400, "바꿀 항목이 없습니다");
 
-  const todo = await prisma.todo
-    .update({ where: { id }, data, select: TODO_SELECT })
-    .catch(() => {
-      throw new HttpError(404, "할 일을 찾을 수 없습니다");
-    });
-
+  const todo = await prisma.todo.update({ where: { id }, data, select: TODO_SELECT });
   return Response.json({ todo });
 });
 
 export const DELETE = route(async (_req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
-  await prisma.todo.delete({ where: { id } }).catch(() => {
-    throw new HttpError(404, "할 일을 찾을 수 없습니다");
-  });
+  await requireTodoAccess(userId, id);
+
+  await prisma.todo.delete({ where: { id } });
   return Response.json({ ok: true });
 });

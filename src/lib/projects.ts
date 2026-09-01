@@ -1,23 +1,42 @@
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/api";
+import { memberProjectIds } from "@/lib/access";
 
 /** Sentinel used by the UI and MCP to mean "not assigned to any project". */
 export const UNASSIGNED = "none";
 
-export const PROJECT_SELECT = {
-  id: true,
-  name: true,
-  description: true,
-  color: true,
-  archived: true,
-  _count: { select: { notes: true, secrets: true, todos: true } },
-} as const;
+/**
+ * `notes`/`todos` counts are the same for every member (the whole project is
+ * shared), but `secrets` is scoped to the caller - secrets are never shared,
+ * so "how many secrets does this project have" only means "how many of mine".
+ */
+export function projectSelect(userId: string) {
+  return {
+    id: true,
+    name: true,
+    description: true,
+    color: true,
+    archived: true,
+    _count: {
+      select: {
+        notes: true,
+        todos: true,
+        secrets: { where: { ownerId: userId } },
+      },
+    },
+  } as const;
+}
 
 /**
- * Accepts a project id or an exact project name and returns the id.
- * MCP callers only know names, so both have to work.
+ * Accepts a project id or an exact project name and returns the id - but only
+ * if `userId` is a member. MCP callers only know names, so both id and name
+ * have to work; the membership check stops a user from filing their own
+ * notes/secrets into a project they don't belong to.
  */
-export async function resolveProjectId(value: string | null | undefined): Promise<string | null> {
+export async function resolveProjectId(
+  userId: string,
+  value: string | null | undefined,
+): Promise<string | null> {
   const v = value?.trim();
   if (!v || v === UNASSIGNED) return null;
 
@@ -26,18 +45,28 @@ export async function resolveProjectId(value: string | null | undefined): Promis
     select: { id: true },
   });
   if (!project) throw new HttpError(404, `프로젝트를 찾을 수 없습니다: ${v}`);
+
+  const ids = await memberProjectIds(userId);
+  if (!ids.includes(project.id)) throw new HttpError(403, `이 프로젝트의 멤버가 아닙니다: ${v}`);
   return project.id;
 }
 
 /**
  * Turns a filter value into a `where` fragment.
  * Returns `{}` for "no filter", which is different from "unassigned only".
+ * Filtering by an id/name the caller isn't a member of returns "no results"
+ * rather than an error - a list endpoint shouldn't 403 on a bad query param.
  */
 export async function projectFilter(
+  userId: string,
   value: string | null | undefined,
 ): Promise<{ projectId?: string | null }> {
   const v = value?.trim();
   if (!v) return {};
   if (v === UNASSIGNED) return { projectId: null };
-  return { projectId: await resolveProjectId(v) };
+  try {
+    return { projectId: await resolveProjectId(userId, v) };
+  } catch {
+    return { projectId: "__no_match__" }; // an id that can never exist -> empty result set
+  }
 }

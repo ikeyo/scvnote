@@ -1,4 +1,4 @@
-import { UnauthorizedError } from "@/lib/auth";
+import { ForbiddenError, UnauthorizedError } from "@/lib/auth";
 
 export class HttpError extends Error {
   constructor(
@@ -20,6 +20,9 @@ export function route<Args extends unknown[]>(
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      if (err instanceof ForbiddenError) {
+        return Response.json({ error: err.message }, { status: 403 });
       }
       if (err instanceof HttpError) {
         return Response.json({ error: err.message }, { status: err.status });

@@ -12,7 +12,9 @@
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 const EMAIL = process.env.TEST_EMAIL ?? "test@example.com";
 const PASSWORD = process.env.TEST_PASSWORD ?? "test-password-123";
-const MCP = process.env.MCP_TOKEN ?? "dev-mcp-token-replace-in-production";
+// each account has its own MCP token now - issued below, right after login,
+// rather than a single shared secret from the environment
+let MCP;
 let cookie = "";
 let pass = 0, fail = 0;
 
@@ -56,6 +58,10 @@ r = await api("/api/auth/login", {
   body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
 });
 check("login succeeds", r.status === 200 && cookie.length > 20);
+
+r = await api("/api/mcp-token", { method: "POST" });
+MCP = r.body?.token;
+check("issue this account's own MCP token", r.status === 200 && typeof MCP === "string" && MCP.length === 64);
 
 console.log("\n[projects]");
 r = await api("/api/projects", {
@@ -169,7 +175,9 @@ r = await api(`/api/notes?project=${encodeURIComponent("ScvNote 개발")}`);
 check("project filter accepts a name too", r.body?.notes?.length === 1);
 
 r = await api("/api/notes?project=no-such-project");
-check("unknown project -> 404", r.status === 404);
+// list endpoints don't error on a bad filter value - they just return nothing,
+// same as filtering by a project id that exists but you're not a member of
+check("unknown project filter -> empty list, not an error", r.status === 200 && r.body?.notes?.length === 0, JSON.stringify(r.body));
 
 r = await api(`/api/notes?project=${projectId}&kind=SNIPPET`);
 check("project + kind combine", r.body?.notes?.length === 0);
@@ -657,6 +665,180 @@ r = await api(`/api/notes/${id}`, { method: "DELETE" });
 check("delete note", r.status === 200);
 r = await api(`/api/attachments/${stored}`);
 check("attachment row gone after note delete", r.status === 404);
+
+console.log("\n[multi-user]");
+
+/** A second, independent session - `api()` above is always this file's one admin account. */
+function client() {
+  let jar = "";
+  return async (path, opts = {}) => {
+    const res = await fetch(BASE + path, { ...opts, headers: { ...(opts.headers ?? {}), ...(jar ? { cookie: jar } : {}) } });
+    for (const c of res.headers.getSetCookie?.() ?? []) if (c.startsWith("scvnote_session=")) jar = c.split(";")[0];
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = text; }
+    return { status: res.status, body };
+  };
+}
+const bob = client();
+async function mcpCall(token, name, args = {}) {
+  const res = await fetch(`${BASE}/api/mcp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+  });
+  const body = await res.json();
+  if (body.result?.isError) throw new Error(`${name}: ${body.result.content[0].text}`);
+  return body.result?.structuredContent;
+}
+
+r = await api("/api/admin/invites", { method: "POST" });
+const inviteToken = r.body?.invite?.token;
+check("admin (first user, auto-admin) creates an invite", r.status === 201 && !!inviteToken);
+
+r = await bob("/api/invites/does-not-exist");
+check("invite lookup 404s for a bogus token", r.status === 404);
+
+r = await bob(`/api/invites/${inviteToken}/accept`, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "bob@example.com", password: "bob-password-123" }),
+});
+check("bob accepts the invite", r.status === 200);
+
+r = await bob(`/api/invites/${inviteToken}/accept`, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "eve@example.com", password: "eve-password-123" }),
+});
+check("a used invite token cannot be replayed", r.status === 410);
+
+r = await bob("/api/auth/session");
+check("bob is not an admin", r.body?.isAdmin === false);
+
+r = await api("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "다중사용자 공유 프로젝트" }) });
+const sharedProjectId = r.body?.project?.id;
+check("admin creates a project to share", r.status === 201);
+
+r = await bob(`/api/projects/${sharedProjectId}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "bob@example.com" }) });
+check("non-member cannot add themselves as a member", r.status === 403);
+
+r = await api(`/api/projects/${sharedProjectId}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "bob@example.com" }) });
+check("owner adds bob to the project", r.status === 201);
+
+r = await api("/api/notes", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "공유 노트", kind: "NOTE", projectId: sharedProjectId, content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "모두가 본다" }] }] } }),
+});
+const sharedNoteId = r.body?.note?.id;
+check("admin creates a note in the shared project", r.status === 201);
+
+r = await bob(`/api/notes/${sharedNoteId}`);
+check("bob (member) can read the shared note", r.status === 200);
+
+r = await bob(`/api/notes/${sharedNoteId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "밥이 수정" }) });
+check("bob (member) can edit the shared note", r.status === 200);
+
+r = await bob("/api/notes", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "밥의 개인 노트", kind: "NOTE", content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "비공개" }] }] } }),
+});
+const bobPrivateNoteId = r.body?.note?.id;
+check("bob creates a private (unassigned) note", r.status === 201);
+
+r = await api(`/api/notes/${bobPrivateNoteId}`);
+check("admin CANNOT read bob's private note (404, no existence leak)", r.status === 404);
+
+r = await api("/api/notes");
+check("admin's own note list excludes bob's private note", !r.body?.notes?.some((n) => n.id === bobPrivateNoteId));
+
+console.log("\n[multi-user: secrets never cross project sharing]");
+r = await bob("/api/vault", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ salt: "Ym9ic2FsdA==", checkCipher: "Ym9iY2lwaGVy", checkIv: "Ym9iaXY=" }) });
+check("bob sets up his own independent vault", r.status === 200);
+
+r = await api("/api/secrets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "관리자 전용 비밀번호", secretCipher: "AAAA", secretIv: "BBBB", projectId: sharedProjectId }) });
+const adminSecretId = r.body?.secret?.id;
+check("admin creates a secret tagged to the shared project", r.status === 201);
+
+r = await bob("/api/secrets");
+check("bob (project member) sees ZERO of admin's secrets", r.body?.secrets?.length === 0, JSON.stringify(r.body?.secrets));
+
+r = await bob(`/api/secrets/${adminSecretId}`, { method: "DELETE" });
+check("bob cannot delete admin's secret (404, not 403)", r.status === 404);
+
+console.log("\n[multi-user: MCP tokens are per-account]");
+r = await bob("/api/mcp-token", { method: "POST" });
+const bobToken = r.body?.token;
+check("bob issues his own MCP token, different from admin's", !!bobToken && bobToken !== MCP);
+
+let adminSearch = await mcpCall(MCP, "search_notes", { q: "" });
+check("mcp: admin's token sees the shared note", adminSearch.notes.some((n) => n.id === sharedNoteId));
+check("mcp: admin's token does not see bob's private note", !adminSearch.notes.some((n) => n.id === bobPrivateNoteId));
+
+let bobSearch = await mcpCall(bobToken, "search_notes", { q: "" });
+check("mcp: bob's token sees the shared note too", bobSearch.notes.some((n) => n.id === sharedNoteId));
+check("mcp: bob's token sees his own private note", bobSearch.notes.some((n) => n.id === bobPrivateNoteId));
+
+const bobMcpSecrets = await mcpCall(bobToken, "list_secrets", {});
+check("mcp: bob's list_secrets never returns admin's secret", bobMcpSecrets.count === 0, JSON.stringify(bobMcpSecrets));
+
+console.log("\n[multi-user: public share links]");
+r = await api(`/api/notes/${sharedNoteId}/share`, { method: "POST" });
+const shareToken = r.body?.shareToken;
+check("admin turns on a public share link", r.status === 200 && !!shareToken);
+
+let anonRes = await fetch(`${BASE}/api/share/${shareToken}`);
+let anonBody = await anonRes.json();
+check("anonymous request (no cookie) reads the shared note", anonRes.status === 200 && anonBody.title === "밥이 수정", JSON.stringify(anonBody).slice(0, 150));
+check("share response is rendered, sanitized html", typeof anonBody.html === "string" && anonBody.html.includes("모두가 본다"));
+
+r = await api(`/api/notes/${sharedNoteId}/share`, { method: "DELETE" });
+check("admin revokes the share link", r.status === 200);
+anonRes = await fetch(`${BASE}/api/share/${shareToken}`);
+check("revoked share link 404s afterward", anonRes.status === 404);
+
+console.log("\n[multi-user: tags don't leak across private notes]");
+r = await bob(`/api/notes/${bobPrivateNoteId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tags: ["밥만의태그"] }) });
+check("bob tags his private note", r.status === 200);
+r = await api("/api/tags");
+check("admin's tag list excludes bob's private-only tag", !r.body?.tags?.some((t) => t.name === "밥만의태그"), JSON.stringify(r.body?.tags?.map((t) => t.name)));
+
+console.log("\n[multi-user: project ownership guards]");
+r = await bob(`/api/projects/${sharedProjectId}`, { method: "DELETE" });
+check("non-owner (bob) cannot delete the shared project", r.status === 403);
+
+const rosterRes = await api(`/api/projects/${sharedProjectId}/members`);
+const bobEntry = rosterRes.body?.members?.find((m) => m.user.email === "bob@example.com");
+check("roster lists bob as MEMBER", bobEntry?.role === "MEMBER");
+
+r = await bob(`/api/projects/${sharedProjectId}/members/${bobEntry.user.id}`, { method: "DELETE" });
+check("bob can remove himself (leave)", r.status === 200);
+
+const adminEntry = (await api(`/api/projects/${sharedProjectId}/members`)).body?.members?.[0];
+r = await api(`/api/projects/${sharedProjectId}/members/${adminEntry.user.id}`, { method: "DELETE" });
+check("the sole remaining OWNER cannot remove themselves", r.status === 409);
+
+console.log("\n[multi-user: admin panel guards]");
+const usersRes = await api("/api/admin/users");
+const bobId = usersRes.body?.users?.find((u) => u.email === "bob@example.com")?.id;
+const adminId = usersRes.body?.users?.find((u) => u.email === EMAIL)?.id;
+check("admin's user list includes both accounts", usersRes.body?.users?.length === 2);
+
+r = await api(`/api/admin/users/${adminId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled: true }) });
+check("admin cannot disable their own account", r.status === 400);
+
+r = await api(`/api/admin/users/${bobId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled: true }) });
+check("admin disables bob", r.status === 200);
+
+r = await client()("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "bob@example.com", password: "bob-password-123" }) });
+check("disabled bob cannot log in", r.status === 403);
+
+const disabledTokenRes = await fetch(`${BASE}/api/mcp`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${bobToken}` },
+  body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+});
+check("disabled bob's MCP token also stops working", disabledTokenRes.status === 401, String(disabledTokenRes.status));
+
+r = await api(`/api/admin/users/${bobId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled: false }) });
+check("admin re-enables bob", r.status === 200);
 
 console.log(`\n=========  ${pass} passed, ${fail} failed  =========\n`);
 process.exit(fail ? 1 : 0);

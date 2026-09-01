@@ -1,31 +1,34 @@
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
+import { secretVisibilityWhere } from "@/lib/access";
 import { projectFilter, resolveProjectId } from "@/lib/projects";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (req: Request) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const params = new URL(req.url).searchParams;
   const q = params.get("q")?.trim();
 
-  const where: Prisma.SecretWhereInput = {
-    ...(await projectFilter(params.get("project"))),
-    ...(q
-      ? {
-          OR: [
-            { title: { contains: q, mode: "insensitive" } },
-            { username: { contains: q, mode: "insensitive" } },
-            { url: { contains: q, mode: "insensitive" } },
-          ],
-        }
-      : {}),
-  };
+  const and: Prisma.SecretWhereInput[] = [secretVisibilityWhere(userId)];
+
+  const pf = await projectFilter(userId, params.get("project"));
+  if ("projectId" in pf) and.push({ projectId: pf.projectId });
+
+  if (q) {
+    and.push({
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { username: { contains: q, mode: "insensitive" } },
+        { url: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
 
   const secrets = await prisma.secret.findMany({
-    where,
+    where: { AND: and },
     orderBy: { title: "asc" },
     include: { project: { select: { id: true, name: true } } },
   });
@@ -33,7 +36,7 @@ export const GET = route(async (req: Request) => {
 });
 
 export const POST = route(async (req: Request) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const body = (await req.json()) as Record<string, string | undefined>;
   if (!body.title?.trim()) throw new HttpError(400, "제목이 필요합니다");
   if (!body.secretCipher || !body.secretIv) {
@@ -48,7 +51,8 @@ export const POST = route(async (req: Request) => {
       memo: body.memo?.trim() || null,
       secretCipher: body.secretCipher,
       secretIv: body.secretIv,
-      projectId: await resolveProjectId(body.projectId),
+      ownerId: userId,
+      projectId: await resolveProjectId(userId, body.projectId),
     },
     include: { project: { select: { id: true, name: true } } },
   });

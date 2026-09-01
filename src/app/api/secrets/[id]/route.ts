@@ -8,9 +8,17 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+/** Secrets are never shared - 404 (not 403) if it exists but belongs to someone else. */
+async function requireOwnSecret(userId: string, id: string): Promise<void> {
+  const secret = await prisma.secret.findUnique({ where: { id }, select: { ownerId: true } });
+  if (!secret || secret.ownerId !== userId) throw new HttpError(404, "항목을 찾을 수 없습니다");
+}
+
 export const PATCH = route(async (req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
+  await requireOwnSecret(userId, id);
+
   const body = (await req.json()) as Record<string, string | undefined>;
 
   const data: Prisma.SecretUpdateInput = {};
@@ -22,7 +30,7 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   if (body.url !== undefined) data.url = body.url.trim() || null;
   if (body.memo !== undefined) data.memo = body.memo.trim() || null;
   if (body.projectId !== undefined) {
-    const pid = await resolveProjectId(body.projectId);
+    const pid = await resolveProjectId(userId, body.projectId);
     data.project = pid ? { connect: { id: pid } } : { disconnect: true };
   }
 
@@ -35,17 +43,15 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
     data.secretIv = body.secretIv;
   }
 
-  const secret = await prisma.secret.update({ where: { id }, data }).catch(() => {
-    throw new HttpError(404, "항목을 찾을 수 없습니다");
-  });
+  const secret = await prisma.secret.update({ where: { id }, data });
   return Response.json({ secret });
 });
 
 export const DELETE = route(async (_req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
-  await prisma.secret.delete({ where: { id } }).catch(() => {
-    throw new HttpError(404, "항목을 찾을 수 없습니다");
-  });
+  await requireOwnSecret(userId, id);
+
+  await prisma.secret.delete({ where: { id } });
   return Response.json({ ok: true });
 });

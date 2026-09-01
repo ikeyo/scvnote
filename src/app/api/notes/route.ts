@@ -10,12 +10,12 @@ import type { Prisma } from "@/generated/prisma/client";
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (req: Request) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const url = new URL(req.url);
   const take = Math.min(Number(url.searchParams.get("limit") ?? 50) || 50, 200);
 
   const notes = await prisma.note.findMany({
-    where: await buildNoteWhere({
+    where: await buildNoteWhere(userId, {
       q: url.searchParams.get("q"),
       kind: url.searchParams.get("kind"),
       tag: url.searchParams.get("tag"),
@@ -28,12 +28,17 @@ export const GET = route(async (req: Request) => {
   });
 
   return Response.json({
-    notes: notes.map(({ contentText, ...n }) => ({ ...n, excerpt: contentText.slice(0, 200) })),
+    // shareToken itself is only sent from the note-detail route, not in bulk lists
+    notes: notes.map(({ contentText, shareToken, ...n }) => ({
+      ...n,
+      excerpt: contentText.slice(0, 200),
+      isShared: shareToken !== null,
+    })),
   });
 });
 
 export const POST = route(async (req: Request) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const body = (await req.json()) as {
     title?: string;
     content?: unknown;
@@ -52,7 +57,8 @@ export const POST = route(async (req: Request) => {
       content: content as Prisma.InputJsonValue,
       contentText,
       tags: connectTags(body.tags),
-      projectId: await resolveProjectId(body.projectId),
+      ownerId: userId,
+      projectId: await resolveProjectId(userId, body.projectId),
     },
     include: { tags: { select: { name: true } }, project: { select: { id: true, name: true } } },
   });

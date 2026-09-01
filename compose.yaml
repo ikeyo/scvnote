@@ -47,7 +47,6 @@ services:
       DATABASE_URL: *db-url
       ATTACHMENTS_DIR: /data/attachments
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required - see .env.example}
-      MCP_TOKEN: ${MCP_TOKEN:-}
     volumes:
       - attachments:/data/attachments
     ports:

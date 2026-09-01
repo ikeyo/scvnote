@@ -35,7 +35,9 @@ export function LoginForm({ setup }: { setup: boolean }) {
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6">
       <h1 className="text-2xl font-bold">ScvNote</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        {setup ? "첫 계정을 만듭니다. 이 앱은 1인용입니다." : "로그인"}
+        {setup
+          ? "첫 계정을 만듭니다. 이후 새 계정은 관리자의 초대 링크로만 늘어납니다."
+          : "로그인"}
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-3">

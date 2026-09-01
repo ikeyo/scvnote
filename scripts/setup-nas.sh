@@ -17,7 +17,6 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 log() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
-warn() { printf '\033[1;33m! %s\033[0m\n' "$1"; }
 
 log "설정 확인"
 if [ -f compose.override.yaml ]; then
@@ -51,10 +50,7 @@ else
   # compose.yaml. base64's "/" breaks URL parsing there ("invalid port number").
   sed_inplace "s#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=$(openssl rand -hex 24)#"
   sed_inplace "s#^AUTH_SECRET=.*#AUTH_SECRET=$(openssl rand -base64 32)#"
-  sed_inplace "s#^MCP_TOKEN=.*#MCP_TOKEN=$(openssl rand -hex 32)#"
   sed_inplace "s#^APP_PORT=.*#APP_PORT=${APP_PORT:-3000}#"
-
-  warn ".env의 ADMIN_EMAIL은 기본값(you@example.com)입니다 - 실제 로그인 이메일은 첫 접속 시 화면에서 직접 정합니다"
 fi
 
 log "빌드 + 기동 (NAS CPU에 따라 5~15분 걸릴 수 있습니다)"
@@ -79,7 +75,6 @@ echo
 log "완료"
 echo "  로컬:  http://localhost:${PORT}"
 [ -n "${IP:-}" ] && echo "  LAN:   http://${IP}:${PORT}"
-echo "  첫 접속 시 화면에서 계정을 만드세요 (회원가입은 이 한 번뿐입니다)."
-echo
-echo "MCP 토큰 (Claude Code / Codex 등록용, 한 번만 표시):"
-grep '^MCP_TOKEN=' .env
+echo "  첫 접속 시 화면에서 계정을 만드세요 - 그 계정이 자동으로 관리자가 됩니다."
+echo "  이후 새 계정은 관리자가 /admin 에서 만드는 초대 링크로만 늘어납니다."
+echo "  MCP(Claude Code/Codex) 연동 토큰은 로그인 후 /settings 에서 각자 발급합니다."

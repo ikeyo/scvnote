@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
+import { requireNoteAccess } from "@/lib/access";
 import { docToText, deriveTitle } from "@/lib/tiptap-text";
 import { connectTags, parseKind } from "@/lib/notes";
 import { resolveProjectId } from "@/lib/projects";
@@ -13,8 +14,9 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = route(async (_req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
+  await requireNoteAccess(userId, id); // 404s if missing or not visible to this user
 
   const note = await prisma.note.findUnique({
     where: { id },
@@ -34,8 +36,10 @@ export const GET = route(async (_req: Request, ctx: Ctx) => {
 });
 
 export const PATCH = route(async (req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
+  await requireNoteAccess(userId, id);
+
   const body = (await req.json()) as {
     title?: string;
     content?: unknown;
@@ -60,8 +64,8 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   if (body.pinned !== undefined) data.pinned = body.pinned;
   if (body.archived !== undefined) data.archived = body.archived;
   if (body.projectId !== undefined) {
-    const id = await resolveProjectId(body.projectId);
-    data.project = id ? { connect: { id } } : { disconnect: true };
+    const pid = await resolveProjectId(userId, body.projectId);
+    data.project = pid ? { connect: { id: pid } } : { disconnect: true };
   }
   if (body.tags !== undefined) {
     // `set: []` first, otherwise removed tags would stay connected
@@ -82,8 +86,10 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
 });
 
 export const DELETE = route(async (_req: Request, ctx: Ctx) => {
-  await requireUserId();
+  const userId = await requireUserId();
   const { id } = await ctx.params;
+  await requireNoteAccess(userId, id);
+
   // rows cascade at the DB level, but the files on disk have to go explicitly
   const note = await prisma.note.findUnique({
     where: { id },

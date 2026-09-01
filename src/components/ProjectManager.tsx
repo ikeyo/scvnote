@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, ErrorText, Input, Spinner } from "@/components/ui";
-import type { ProjectSummary } from "@/lib/types";
+import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
+import type { ProjectSummary, SessionInfo } from "@/lib/types";
 
 export const PALETTE = ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#dc2626", "#0891b2", "#ca8a04"];
 
@@ -17,6 +18,14 @@ export function ProjectManager() {
   const [color, setColor] = useState(PALETTE[0]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [membersOpenId, setMembersOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setSession(d));
+  }, []);
 
   // deliberately no setLoading(true) up front: setting state synchronously
   // inside an effect is a lint error, and a refetch does not need a spinner
@@ -71,7 +80,7 @@ export function ProjectManager() {
     const { notes, secrets } = project._count;
     const warning =
       notes + secrets > 0
-        ? `노트 ${notes}건, 비밀번호 ${secrets}건이 미분류로 이동합니다. 내용은 지워지지 않습니다.\n\n`
+        ? `노트 ${notes}건, 내 비밀번호 ${secrets}건이 미분류로 이동합니다. 내용은 지워지지 않습니다.\n\n`
         : "";
     if (!confirm(`${warning}"${project.name}" 프로젝트를 삭제할까요?`)) return;
 
@@ -85,6 +94,7 @@ export function ProjectManager() {
       <h1 className="text-xl font-bold">프로젝트</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
         프로젝트는 가장 큰 단위입니다. 만들면 작업일지 · 코드 스니펫 · 일반 노트 세 카테고리가 함께 생깁니다.
+        프로젝트에 멤버로 초대된 사람은 그 안의 노트/할 일을 함께 봅니다 (비밀번호는 예외 - 각자 것만 보입니다).
         프로젝트를 지워도 안의 내용은 남고 미분류로 이동합니다.
       </p>
 
@@ -139,31 +149,39 @@ export function ProjectManager() {
                 />
               </li>
             ) : (
-              <li key={p.id} className="flex items-center gap-3 py-3">
-                <span
-                  aria-hidden
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ background: p.color ?? "var(--muted)" }}
-                />
-                <div className="min-w-0 flex-1">
-                  <Link href={`/notes?project=${p.id}`} className="font-medium hover:underline">
-                    {p.name}
-                  </Link>
-                  {p.archived && <span className="ml-2 text-xs text-[var(--muted)]">보관됨</span>}
-                  <p className="truncate text-xs text-[var(--muted)]">
-                    노트 {p._count.notes} · 비밀번호 {p._count.secrets}
-                    {p.description ? ` · ${p.description}` : ""}
-                  </p>
+              <li key={p.id} className="py-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    aria-hidden
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: p.color ?? "var(--muted)" }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/notes?project=${p.id}`} className="font-medium hover:underline">
+                      {p.name}
+                    </Link>
+                    {p.archived && <span className="ml-2 text-xs text-[var(--muted)]">보관됨</span>}
+                    <p className="truncate text-xs text-[var(--muted)]">
+                      노트 {p._count.notes} · 내 비밀번호 {p._count.secrets}
+                      {p.description ? ` · ${p.description}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button onClick={() => setMembersOpenId(membersOpenId === p.id ? null : p.id)}>
+                      멤버
+                    </Button>
+                    <Button onClick={() => setEditingId(p.id)}>수정</Button>
+                    <Button onClick={() => patch(p.id, { archived: !p.archived })}>
+                      {p.archived ? "복구" : "보관"}
+                    </Button>
+                    <Button variant="danger" onClick={() => remove(p)}>
+                      삭제
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button onClick={() => setEditingId(p.id)}>수정</Button>
-                  <Button onClick={() => patch(p.id, { archived: !p.archived })}>
-                    {p.archived ? "복구" : "보관"}
-                  </Button>
-                  <Button variant="danger" onClick={() => remove(p)}>
-                    삭제
-                  </Button>
-                </div>
+                {membersOpenId === p.id && (
+                  <ProjectMembersPanel projectId={p.id} viewerEmail={session?.email ?? null} />
+                )}
               </li>
             ),
           )}

@@ -1,4 +1,5 @@
 import { HttpError } from "@/lib/api";
+import { ownedOrMemberWhere } from "@/lib/access";
 import { projectFilter } from "@/lib/projects";
 import { NoteKind } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -9,32 +10,40 @@ export function parseKind(value: string | null | undefined): NoteKind | undefine
   return value && NOTE_KINDS.includes(value) ? (value as NoteKind) : undefined;
 }
 
-export async function buildNoteWhere(params: {
-  q?: string | null;
-  kind?: string | null;
-  tag?: string | null;
-  project?: string | null;
-  archived?: boolean;
-}): Promise<Prisma.NoteWhereInput> {
-  const where: Prisma.NoteWhereInput = {
-    archived: params.archived ?? false,
-    ...(await projectFilter(params.project)),
-  };
+export async function buildNoteWhere(
+  userId: string,
+  params: {
+    q?: string | null;
+    kind?: string | null;
+    tag?: string | null;
+    project?: string | null;
+    archived?: boolean;
+  },
+): Promise<Prisma.NoteWhereInput> {
+  // combined with AND, not spread onto one object, so this OR (visibility)
+  // never collides with the search OR below
+  const and: Prisma.NoteWhereInput[] = [await ownedOrMemberWhere(userId)];
+
+  const pf = await projectFilter(userId, params.project);
+  if ("projectId" in pf) and.push({ projectId: pf.projectId });
 
   const kind = parseKind(params.kind);
-  if (kind) where.kind = kind;
-  if (params.tag) where.tags = { some: { name: params.tag } };
+  if (kind) and.push({ kind });
+  if (params.tag) and.push({ tags: { some: { name: params.tag } } });
 
   if (params.q?.trim()) {
     const q = params.q.trim();
     // `contains` + insensitive compiles to ILIKE '%q%', which the pg_trgm GIN
     // indexes on title/contentText can serve.
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { contentText: { contains: q, mode: "insensitive" } },
-    ];
+    and.push({
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { contentText: { contains: q, mode: "insensitive" } },
+      ],
+    });
   }
-  return where;
+
+  return { archived: params.archived ?? false, AND: and };
 }
 
 /** Turns a list of tag names into a connectOrCreate payload. */
@@ -53,6 +62,8 @@ export const NOTE_LIST_SELECT = {
   archived: true,
   updatedAt: true,
   contentText: true,
+  ownerId: true,
+  shareToken: true,
   tags: { select: { name: true } },
   project: { select: { id: true, name: true, color: true } },
   _count: { select: { attachments: true } },

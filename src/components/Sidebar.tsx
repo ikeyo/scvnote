@@ -9,6 +9,7 @@ import {
   UNASSIGNED,
   type KindCounts,
   type ProjectSummary,
+  type SessionInfo,
 } from "@/lib/types";
 
 /**
@@ -22,6 +23,7 @@ export function Sidebar() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [unassigned, setUnassigned] = useState<KindCounts>({ NOTE: 0, WORKLOG: 0, SNIPPET: 0 });
   const [unassignedTodos, setUnassignedTodos] = useState(0);
+  const [session, setSession] = useState<SessionInfo | null>(null);
 
   const currentProject = params.get("project");
   const onTodos = pathname.startsWith("/todos");
@@ -40,6 +42,12 @@ export function Sidebar() {
         setUnassignedTodos(d.unassignedOpenTodos ?? 0);
       });
   }, [pathname, params]);
+
+  useEffect(() => {
+    void fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setSession(d));
+  }, []);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -132,12 +140,22 @@ export function Sidebar() {
         </NavLink>
       </div>
 
-      <button
-        onClick={logout}
-        className="mt-auto rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted)] hover:bg-[var(--background)]"
-      >
-        로그아웃
-      </button>
+      <div className="mt-auto flex flex-col gap-0.5 border-t border-[var(--border)] pt-3">
+        {session?.isAdmin && (
+          <NavLink href="/admin" active={pathname.startsWith("/admin")}>
+            <span className="truncate">관리자</span>
+          </NavLink>
+        )}
+        <NavLink href="/settings" active={pathname.startsWith("/settings")}>
+          <span className="truncate">설정{session?.email ? ` · ${session.email}` : ""}</span>
+        </NavLink>
+        <button
+          onClick={logout}
+          className="rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted)] hover:bg-[var(--background)]"
+        >
+          로그아웃
+        </button>
+      </div>
     </aside>
   );
 }

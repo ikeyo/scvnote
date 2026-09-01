@@ -9,22 +9,78 @@ datasource db {
   extensions = [pg_trgm]
 }
 
-/// Single user - this is a personal app, there is no sign-up flow.
+/// 계정. 회원가입 화면은 없다 - 최초 1명은 셋업 화면에서, 이후는 관리자가 만드는
+/// 초대 링크로만 늘어난다. 첫 계정은 자동으로 관리자가 된다.
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  isAdmin      Boolean  @default(false)
+  /// 로그인 차단 시각. 계정은 지우지 않는다 - 소유한 노트/할 일/프로젝트가
+  /// 전부 이 사용자를 참조하므로, 삭제하면 그 참조가 깨진다.
+  disabledAt   DateTime?
   createdAt    DateTime @default(now())
 
-  /// Vault (Secret) crypto material. The key itself never leaves the browser.
+  /// 비밀번호 보관함(Secret) 크립토 자료. 키 자체는 브라우저를 벗어나지 않는다.
   /// base64 salt for PBKDF2 key derivation
   vaultSalt        String?
   /// AES-GCM ciphertext of a known probe string, used to verify the master password
   vaultCheckCipher String?
   vaultCheckIv     String?
+
+  /// MCP 인증 토큰의 해시(SHA-256, hex). 평문 토큰은 발급 시 한 번만 보여주고 저장하지 않는다.
+  mcpTokenHash String? @unique
+
+  projectMemberships ProjectMember[]
+  ownedNotes         Note[]          @relation("NoteOwner")
+  ownedTodos         Todo[]          @relation("TodoOwner")
+  ownedSecrets       Secret[]        @relation("SecretOwner")
+  invitesCreated     Invite[]        @relation("InviteCreatedBy")
+  invitesUsed        Invite[]        @relation("InviteUsedBy")
 }
 
-/// 작업 단위. 노트와 비밀번호가 여기에 묶인다. 미분류(projectId = null)도 허용한다.
+/// 관리자가 발급하는 1회용 계정 초대. 회원가입 화면 대신 이걸로만 계정이 늘어난다.
+model Invite {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdById String
+  createdBy   User   @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  usedById String? @unique
+  usedBy   User?   @relation("InviteUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+}
+
+enum ProjectRole {
+  OWNER
+  MEMBER
+}
+
+/// 프로젝트 멤버십. OWNER는 멤버 관리·프로젝트 삭제 권한이 있고, MEMBER는
+/// 그 프로젝트 안의 노트/할 일을 보고 쓸 수 있다. 비밀번호 보관함은 여기 안 걸린다 -
+/// 사용자마다 마스터 패스워드가 달라 같은 암호문을 서로 열 수 없기 때문이다.
+model ProjectMember {
+  id     String      @id @default(cuid())
+  role   ProjectRole @default(MEMBER)
+  userId String
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+/// 작업 단위. 노트와 할 일이 여기에 묶인다. 미분류(projectId = null)는 만든 사람의
+/// 개인 공간이고, 프로젝트에 배정되면 그 프로젝트 멤버 전원이 본다.
 model Project {
   id          String   @id @default(cuid())
   name        String   @unique
@@ -35,9 +91,10 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  members ProjectMember[]
   notes   Note[]
-  secrets Secret[]
   todos   Todo[]
+  secrets Secret[]
 
   @@index([archived, name])
 }
@@ -61,8 +118,16 @@ model Note {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// 만든 사람. projectId가 null일 때(미분류) 이 사람만 볼 수 있다.
+  ownerId String
+  owner   User   @relation("NoteOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  /// 로그인 없이 볼 수 있는 공개 읽기 전용 링크. null이면 비공개.
+  shareToken String?   @unique
+  sharedAt   DateTime?
 
   tags        Tag[]
   attachments Attachment[]
@@ -71,6 +136,7 @@ model Note {
   @@index([kind, updatedAt])
   @@index([archived, updatedAt])
   @@index([projectId, updatedAt])
+  @@index([ownerId, projectId])
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([contentText(ops: raw("gin_trgm_ops"))], type: Gin)
 }
@@ -98,6 +164,10 @@ model Attachment {
 
 /// Credentials. `secretCipher` is encrypted in the browser - the server never
 /// sees the plaintext and cannot decrypt it. See docs/security.md.
+///
+/// 소유자 전용이다: 프로젝트에 묶여 있어도 다른 멤버에게 보이지 않는다. 대칭키
+/// 암호화라서, 서로 다른 마스터 패스워드를 쓰는 두 사람이 같은 암호문을 나눠 가질
+/// 방법이 없다 - projectId는 소유자 본인의 정리용 태그일 뿐이다.
 model Secret {
   id        String   @id @default(cuid())
   title     String
@@ -111,11 +181,14 @@ model Secret {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  ownerId String
+  owner   User   @relation("SecretOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
-  @@index([title])
-  @@index([projectId, title])
+  @@index([ownerId, title])
+  @@index([ownerId, projectId])
 }
 
 /// 할 일의 성격. 오류사항 / 개선사항 / 아이디어 / 일반 할 일.
@@ -132,13 +205,16 @@ enum TodoStatus {
   DONE
 }
 
-/// 프로젝트별 할 일. 노트와 마찬가지로 미분류(projectId = null)를 허용한다.
+/// 프로젝트별 할 일. 노트와 마찬가지로 미분류(projectId = null)는 만든 사람만 본다.
 model Todo {
   id     String     @id @default(cuid())
   kind   TodoKind   @default(TASK)
   status TodoStatus @default(TODO)
   title  String
   detail String?
+
+  ownerId String
+  owner   User   @relation("TodoOwner", fields: [ownerId], references: [id], onDelete: Restrict)
 
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -153,4 +229,5 @@ model Todo {
 
   @@index([projectId, status])
   @@index([status, updatedAt])
+  @@index([ownerId, projectId])
 }
