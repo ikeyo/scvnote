@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { HttpError, route } from "@/lib/api";
-import { renderNoteHtml } from "@/lib/tiptap-render";
+import { renderNoteHtml } from "@/lib/note-render";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ export const GET = route(async (_req: Request, ctx: Ctx) => {
     select: {
       title: true,
       kind: true,
-      content: true,
+      body: true,
       updatedAt: true,
       sharedAt: true,
     },
@@ -29,7 +29,7 @@ export const GET = route(async (_req: Request, ctx: Ctx) => {
   return Response.json({
     title: note.title,
     kind: note.kind,
-    html: renderNoteHtml(note.content),
+    html: renderNoteHtml(note.body),
     updatedAt: note.updatedAt,
     sharedAt: note.sharedAt,
   });

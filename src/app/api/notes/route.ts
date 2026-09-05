@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { route } from "@/lib/api";
-import { docToText, deriveTitle } from "@/lib/tiptap-text";
+import { deriveTitle } from "@/lib/markdown";
 import { NOTE_LIST_SELECT, buildNoteWhere, connectTags, parseKind } from "@/lib/notes";
 import { resolveProjectId } from "@/lib/projects";
 import { NoteKind } from "@/generated/prisma/enums";
-import type { Prisma } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +28,9 @@ export const GET = route(async (req: Request) => {
 
   return Response.json({
     // shareToken itself is only sent from the note-detail route, not in bulk lists
-    notes: notes.map(({ contentText, shareToken, ...n }) => ({
+    notes: notes.map(({ body, shareToken, ...n }) => ({
       ...n,
-      excerpt: contentText.slice(0, 200),
+      excerpt: body.slice(0, 200),
       isShared: shareToken !== null,
     })),
   });
@@ -39,26 +38,24 @@ export const GET = route(async (req: Request) => {
 
 export const POST = route(async (req: Request) => {
   const userId = await requireUserId();
-  const body = (await req.json()) as {
+  const input = (await req.json()) as {
     title?: string;
-    content?: unknown;
+    body?: string;
     kind?: string;
     tags?: string[];
     projectId?: string | null;
   };
 
-  const content = body.content ?? { type: "doc", content: [] };
-  const contentText = docToText(content);
+  const body = input.body ?? "";
 
   const note = await prisma.note.create({
     data: {
-      kind: parseKind(body.kind) ?? NoteKind.NOTE,
-      title: body.title?.trim() || deriveTitle(contentText),
-      content: content as Prisma.InputJsonValue,
-      contentText,
-      tags: connectTags(body.tags),
+      kind: parseKind(input.kind) ?? NoteKind.NOTE,
+      title: input.title?.trim() || deriveTitle(body),
+      body,
+      tags: connectTags(input.tags),
       ownerId: userId,
-      projectId: await resolveProjectId(userId, body.projectId),
+      projectId: await resolveProjectId(userId, input.projectId),
     },
     include: { tags: { select: { name: true } }, project: { select: { id: true, name: true } } },
   });

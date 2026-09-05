@@ -44,32 +44,32 @@ body {
 
 /* ------------------------------- editor ---------------------------------- */
 
-.ProseMirror {
+.note-body {
   outline: none;
   min-height: 24rem;
   line-height: 1.7;
 }
-.ProseMirror > * + * { margin-top: 0.75em; }
-.ProseMirror h1 { font-size: 1.75rem; font-weight: 700; margin-top: 1.4em; }
-.ProseMirror h2 { font-size: 1.4rem; font-weight: 700; margin-top: 1.3em; }
-.ProseMirror h3 { font-size: 1.15rem; font-weight: 600; margin-top: 1.2em; }
-.ProseMirror ul { list-style: disc; padding-left: 1.5rem; }
-.ProseMirror ol { list-style: decimal; padding-left: 1.5rem; }
-.ProseMirror li > p { margin: 0; }
-.ProseMirror blockquote {
+.note-body > * + * { margin-top: 0.75em; }
+.note-body h1 { font-size: 1.75rem; font-weight: 700; margin-top: 1.4em; }
+.note-body h2 { font-size: 1.4rem; font-weight: 700; margin-top: 1.3em; }
+.note-body h3 { font-size: 1.15rem; font-weight: 600; margin-top: 1.2em; }
+.note-body ul { list-style: disc; padding-left: 1.5rem; }
+.note-body ol { list-style: decimal; padding-left: 1.5rem; }
+.note-body li > p { margin: 0; }
+.note-body blockquote {
   border-left: 3px solid var(--border);
   padding-left: 1rem;
   color: var(--muted);
 }
-.ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
-.ProseMirror code {
+.note-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+.note-body code {
   background: var(--code-bg);
   border-radius: 0.25rem;
   padding: 0.1em 0.35em;
   font-family: var(--font-geist-mono), monospace;
   font-size: 0.875em;
 }
-.ProseMirror pre {
+.note-body pre {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
@@ -79,25 +79,9 @@ body {
   font-size: 0.85rem;
   line-height: 1.6;
 }
-.ProseMirror pre code { background: none; padding: 0; font-size: inherit; }
-.ProseMirror img {
+.note-body pre code { background: none; padding: 0; font-size: inherit; }
+.note-body img {
   max-width: 100%;
   border-radius: 0.5rem;
   border: 1px solid var(--border);
 }
-.ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: var(--muted);
-  float: left;
-  height: 0;
-  pointer-events: none;
-}
-
-/* syntax highlighting - lowlight emits highlight.js class names */
-.hljs-comment, .hljs-quote { color: var(--muted); font-style: italic; }
-.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type { color: #c678dd; }
-.hljs-string, .hljs-attr, .hljs-addition { color: #98c379; }
-.hljs-number, .hljs-symbol, .hljs-built_in { color: #d19a66; }
-.hljs-title, .hljs-section, .hljs-name { color: #61afef; }
-.hljs-variable, .hljs-template-variable { color: #e06c75; }
-.hljs-deletion { color: #e06c75; }

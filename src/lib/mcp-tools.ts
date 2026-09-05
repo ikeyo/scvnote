@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { docToText, deriveTitle } from "@/lib/tiptap-text";
+import { deriveTitle } from "@/lib/markdown";
 import {
   memberProjectIds,
   ownedOrMemberWhere,
@@ -39,27 +39,6 @@ const PROJECT_ARG = {
     '프로젝트 이름 또는 ID. 생략하면 미분류. "' + UNASSIGNED + '"를 주면 미분류만 대상으로 한다. ' +
     "이 도구를 쓰는 사용자가 멤버가 아닌 프로젝트는 지정할 수 없다.",
 } as const;
-
-/** Wraps plain text (paragraphs split on blank lines) into a TipTap document. */
-function textToDoc(text: string): Prisma.InputJsonValue {
-  const blocks = text.split(/\n{2,}/).filter((b) => b.trim());
-  return {
-    type: "doc",
-    content: (blocks.length ? blocks : [""]).map((block) => ({
-      type: "paragraph",
-      content: block ? [{ type: "text", text: block }] : [],
-    })),
-  } as Prisma.InputJsonValue;
-}
-
-function appendParagraphs(doc: unknown, text: string): Prisma.InputJsonValue {
-  const base =
-    doc && typeof doc === "object" && Array.isArray((doc as { content?: unknown[] }).content)
-      ? (doc as { type?: string; content: unknown[] })
-      : { type: "doc", content: [] };
-  const added = (textToDoc(text) as { content: unknown[] }).content;
-  return { type: "doc", content: [...base.content, ...added] } as Prisma.InputJsonValue;
-}
 
 export const MCP_TOOLS: McpTool[] = [
   {
@@ -322,12 +301,12 @@ export const MCP_TOOLS: McpTool[] = [
     name: "create_note",
     title: "노트 생성",
     description:
-      "새 노트를 만든다. 작업일지는 kind=WORKLOG, 코드 조각은 kind=SNIPPET을 쓴다. 비밀번호는 저장할 수 없다.",
+      "새 노트를 만든다. 본문은 마크다운을 그대로 넣으면 되고, 변환 없이 원문 그대로 저장된다. 작업일지는 kind=WORKLOG, 코드 조각은 kind=SNIPPET을 쓴다. 비밀번호는 저장할 수 없다.",
     inputSchema: {
       type: "object",
       properties: {
         title: { type: "string", description: "제목. 비우면 본문 첫 줄에서 만든다" },
-        text: { type: "string", description: "본문(일반 텍스트). 빈 줄로 문단을 나눈다" },
+        text: { type: "string", description: "본문(마크다운). 제목·목록·코드블록 문법을 그대로 쓴다" },
         kind: { type: "string", enum: ["NOTE", "WORKLOG", "SNIPPET"], default: "NOTE" },
         project: PROJECT_ARG,
         tags: { type: "array", items: { type: "string" } },
@@ -340,8 +319,7 @@ export const MCP_TOOLS: McpTool[] = [
         data: {
           kind: parseKind(str(args.kind)) ?? NoteKind.NOTE,
           title: str(args.title) ?? deriveTitle(text),
-          content: textToDoc(text),
-          contentText: text,
+          body: text,
           tags: connectTags(strArray(args.tags)),
           ownerId: userId,
           projectId: await resolveProjectId(userId, str(args.project)),
@@ -354,7 +332,8 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: "append_to_note",
     title: "노트에 이어쓰기",
-    description: "기존 노트 본문 끝에 텍스트를 덧붙인다. 작업일지 누적에 쓴다. 내가 볼 수 있는 노트만 가능하다.",
+    description:
+      "기존 노트 본문 끝에 마크다운을 덧붙인다(빈 줄로 구분해서 붙는다). 작업일지 누적에 쓴다. 내가 볼 수 있는 노트만 가능하다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -369,11 +348,12 @@ export const MCP_TOOLS: McpTool[] = [
       if (!id || !text) throw new Error("id와 text가 필요합니다");
       await requireNoteAccess(userId, id);
 
-      const existing = await prisma.note.findUniqueOrThrow({ where: { id }, select: { content: true } });
-      const content = appendParagraphs(existing.content, text);
+      const existing = await prisma.note.findUniqueOrThrow({ where: { id }, select: { body: true } });
+      // a blank line between, so appended markdown starts its own block
+      const body = existing.body ? `${existing.body.trimEnd()}\n\n${text}` : text;
       const note = await prisma.note.update({
         where: { id },
-        data: { content, contentText: docToText(content) },
+        data: { body },
         select: { id: true, title: true, updatedAt: true },
       });
       return { ...note, message: "이어썼습니다" };
@@ -463,7 +443,7 @@ export const MCP_TOOLS: McpTool[] = [
           project: n.project?.name ?? null,
           tags: n.tags.map((t) => t.name),
           updatedAt: n.updatedAt,
-          excerpt: n.contentText.slice(0, 300),
+          excerpt: n.body.slice(0, 300),
         })),
       };
     },
@@ -471,7 +451,8 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: "get_note",
     title: "노트 전문 읽기",
-    description: "ID로 노트 본문 전체를 읽는다. 내가 볼 수 있는 노트만 가능하다.",
+    description:
+      "ID로 노트 본문 전체를 읽는다. 저장된 마크다운 원문을 `body`로 그대로 돌려준다. 내가 볼 수 있는 노트만 가능하다.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string" } },
@@ -488,7 +469,7 @@ export const MCP_TOOLS: McpTool[] = [
           id: true,
           title: true,
           kind: true,
-          contentText: true,
+          body: true,
           updatedAt: true,
           tags: { select: { name: true } },
           project: { select: { name: true } },

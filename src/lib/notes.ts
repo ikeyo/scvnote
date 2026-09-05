@@ -34,11 +34,11 @@ export async function buildNoteWhere(
   if (params.q?.trim()) {
     const q = params.q.trim();
     // `contains` + insensitive compiles to ILIKE '%q%', which the pg_trgm GIN
-    // indexes on title/contentText can serve.
+    // indexes on title/body can serve.
     and.push({
       OR: [
         { title: { contains: q, mode: "insensitive" } },
-        { contentText: { contains: q, mode: "insensitive" } },
+        { body: { contains: q, mode: "insensitive" } },
       ],
     });
   }
@@ -61,7 +61,7 @@ export const NOTE_LIST_SELECT = {
   pinned: true,
   archived: true,
   updatedAt: true,
-  contentText: true,
+  body: true,
   ownerId: true,
   shareToken: true,
   tags: { select: { name: true } },

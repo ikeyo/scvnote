@@ -128,7 +128,8 @@ export type NoteDetail = {
   id: string;
   kind: NoteKindValue;
   title: string;
-  content: unknown;
+  /** 마크다운 원문. */
+  body: string;
   pinned: boolean;
   archived: boolean;
   updatedAt: string;

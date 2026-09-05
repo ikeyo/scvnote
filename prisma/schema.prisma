@@ -101,10 +101,9 @@ model Note {
   id        String   @id @default(cuid())
   kind      NoteKind @default(NOTE)
   title     String
-  /// TipTap document (ProseMirror JSON)
-  content   Json     @default("{}")
-  /// Flattened plain text of `content`, kept in sync on write. Used for full-text search.
-  contentText String @default("")
+  /// 본문. 마크다운 원문 그대로 - 저장할 때도 읽을 때도 변환하지 않는다.
+  /// 표시할 때만 HTML로 렌더한다(src/lib/note-render.ts).
+  body      String   @default("")
   pinned    Boolean  @default(false)
   archived  Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -130,7 +129,7 @@ model Note {
   @@index([projectId, updatedAt])
   @@index([ownerId, projectId])
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
-  @@index([contentText(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([body(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model Tag {

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
 import { requireNoteAccess } from "@/lib/access";
-import { docToText, deriveTitle } from "@/lib/tiptap-text";
+import { deriveTitle } from "@/lib/markdown";
 import { connectTags, parseKind } from "@/lib/notes";
 import { resolveProjectId } from "@/lib/projects";
 import { removeStored } from "@/lib/attachments";
@@ -40,9 +40,9 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
   await requireNoteAccess(userId, id);
 
-  const body = (await req.json()) as {
+  const input = (await req.json()) as {
     title?: string;
-    content?: unknown;
+    body?: string;
     kind?: string;
     tags?: string[];
     pinned?: boolean;
@@ -52,24 +52,22 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
 
   const data: Prisma.NoteUpdateInput = {};
 
-  if (body.content !== undefined) {
-    const contentText = docToText(body.content);
-    data.content = body.content as Prisma.InputJsonValue;
-    data.contentText = contentText;
+  if (input.body !== undefined) {
+    data.body = input.body;
     // an emptied title falls back to the first line rather than staying blank
-    if (body.title !== undefined && !body.title.trim()) data.title = deriveTitle(contentText);
+    if (input.title !== undefined && !input.title.trim()) data.title = deriveTitle(input.body);
   }
-  if (body.title?.trim()) data.title = body.title.trim();
-  if (body.kind) data.kind = parseKind(body.kind);
-  if (body.pinned !== undefined) data.pinned = body.pinned;
-  if (body.archived !== undefined) data.archived = body.archived;
-  if (body.projectId !== undefined) {
-    const pid = await resolveProjectId(userId, body.projectId);
+  if (input.title?.trim()) data.title = input.title.trim();
+  if (input.kind) data.kind = parseKind(input.kind);
+  if (input.pinned !== undefined) data.pinned = input.pinned;
+  if (input.archived !== undefined) data.archived = input.archived;
+  if (input.projectId !== undefined) {
+    const pid = await resolveProjectId(userId, input.projectId);
     data.project = pid ? { connect: { id: pid } } : { disconnect: true };
   }
-  if (body.tags !== undefined) {
+  if (input.tags !== undefined) {
     // `set: []` first, otherwise removed tags would stay connected
-    data.tags = { set: [], ...(connectTags(body.tags) ?? {}) };
+    data.tags = { set: [], ...(connectTags(input.tags) ?? {}) };
   }
 
   const note = await prisma.note

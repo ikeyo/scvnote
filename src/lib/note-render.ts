@@ -1,13 +1,16 @@
 /**
- * Renders a TipTap/ProseMirror document to HTML for the public share page.
+ * Renders a markdown note body to HTML, for the public share page and the
+ * editor's preview.
  *
- * Deliberately NOT using `@tiptap/core`'s `generateHTML` here: that content
- * can come from a direct API call (any project member, bypassing the editor
- * UI), and the share page serves the result to anonymous visitors. This is
- * a small allowlist renderer instead - every tag is chosen explicitly, every
- * text node is escaped, and image `src` is restricted to this app's own
- * attachment path or a plain http(s) URL. Nothing else gets through.
+ * An allowlist renderer rather than a markdown-to-HTML library: a body can
+ * come from a direct API call (any project member, bypassing the editor UI),
+ * and the share page serves the result to anonymous visitors. Every tag here
+ * is chosen explicitly, every text node is escaped, and both image `src` and
+ * link `href` are restricted to schemes that can't execute. Nothing else
+ * gets through - markdown's own raw-HTML passthrough included, since the
+ * parser never produces raw HTML nodes in the first place.
  */
+import { markdownToDoc } from "@/lib/markdown";
 
 type Node = { type?: string; text?: string; marks?: { type: string; attrs?: Record<string, unknown> }[]; attrs?: Record<string, unknown>; content?: Node[] };
 
@@ -32,6 +35,14 @@ function safeImageSrc(src: unknown): string | null {
   return null;
 }
 
+/** Same idea for links, plus mailto. Anything else renders as plain text. */
+function safeHref(href: unknown): string | null {
+  if (typeof href !== "string") return null;
+  if (href.startsWith("/") || href.startsWith("#")) return href;
+  if (/^(https?:\/\/|mailto:)/i.test(href)) return href;
+  return null;
+}
+
 const MARK_TAGS: Record<string, string> = {
   bold: "strong",
   italic: "em",
@@ -43,7 +54,13 @@ function renderMarks(text: string, marks: Node["marks"]): string {
   let html = escapeHtml(text);
   for (const mark of marks ?? []) {
     const tag = MARK_TAGS[mark.type];
-    if (tag) html = `<${tag}>${html}</${tag}>`;
+    if (tag) {
+      html = `<${tag}>${html}</${tag}>`;
+    } else if (mark.type === "link") {
+      const href = safeHref(mark.attrs?.href);
+      // rel/target because a shared note's links are followed by strangers
+      if (href) html = `<a href="${escapeAttr(href)}" rel="nofollow noreferrer" target="_blank">${html}</a>`;
+    }
   }
   return html;
 }
@@ -96,7 +113,8 @@ function renderNode(node: Node): string {
   }
 }
 
-export function renderNoteHtml(doc: unknown): string {
-  if (!doc || typeof doc !== "object") return "";
-  return renderNode(doc as Node);
+/** Markdown body -> HTML. Safe to insert with `dangerouslySetInnerHTML`. */
+export function renderNoteHtml(markdown: string): string {
+  if (!markdown) return "";
+  return renderNode(markdownToDoc(markdown) as Node);
 }

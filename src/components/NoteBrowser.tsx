@@ -73,7 +73,7 @@ export function NoteBrowser({
         title: "",
         kind,
         projectId: initialProject && initialProject !== UNASSIGNED ? initialProject : null,
-        content: { type: "doc", content: [{ type: "paragraph" }] },
+        body: "",
       }),
     });
     const data = await res.json();

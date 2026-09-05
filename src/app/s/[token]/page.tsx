@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { renderNoteHtml } from "@/lib/tiptap-render";
+import { renderNoteHtml } from "@/lib/note-render";
 import { KIND_LABEL, type NoteKindValue } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export default async function SharedNotePage({ params }: PageProps<"/s/[token]">
 
   const note = await prisma.note.findUnique({
     where: { shareToken: token },
-    select: { title: true, kind: true, content: true, updatedAt: true },
+    select: { title: true, kind: true, body: true, updatedAt: true },
   });
 
   if (!note) {
@@ -38,11 +38,11 @@ export default async function SharedNotePage({ params }: PageProps<"/s/[token]">
       <div
         // reuses the editor's typographic CSS (headings/lists/code/images) -
         // those rules aren't editing-specific, so this static page borrows them
-        className="ProseMirror mt-6"
+        className="note-body mt-6"
         // renderNoteHtml is an allowlist renderer (see src/lib/tiptap-render.ts) -
         // every tag is chosen explicitly and all text is escaped, so this is
         // not raw user HTML
-        dangerouslySetInnerHTML={{ __html: renderNoteHtml(note.content) }}
+        dangerouslySetInnerHTML={{ __html: renderNoteHtml(note.body) }}
       />
     </main>
   );

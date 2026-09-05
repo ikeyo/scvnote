@@ -44,19 +44,22 @@ codex mcp add scvnote --url http://localhost:3100/api/mcp --bearer-token-env-var
 | `create_todo` | 할 일 추가 |
 | `update_todo` | 진행 상태 변경. 완료 처리에 쓴다 |
 | `list_tags` | 내가 볼 수 있는 노트에 쓰이는 태그와 개수. 표기 중복을 막는 데 쓴다 |
-| `create_note` | 새 노트 저장. `kind`로 카테고리, `project`로 소속 지정 |
+| `create_note` | 새 노트 저장. 본문은 **마크다운 그대로** 들어간다. `kind`로 카테고리, `project`로 소속 지정 |
 | `update_note` | 제목·카테고리·프로젝트·고정 변경. 다른 프로젝트로 옮길 때 쓴다 |
-| `append_to_note` | 기존 노트 끝에 이어쓰기 (작업일지 누적) |
+| `append_to_note` | 기존 노트 끝에 마크다운 이어쓰기, 빈 줄로 구분해 붙는다 (작업일지 누적) |
 | `search_notes` | 내가 볼 수 있는 노트에서 제목·본문 검색. `project`로 범위 한정 |
-| `get_note` | ID로 본문 전문 읽기 |
+| `get_note` | ID로 본문 전문 읽기. 저장된 마크다운 원문을 `body`로 그대로 돌려준다 |
 | `list_secrets` | 내 개인 항목 + 내가 멤버인 프로젝트의 공유 항목, 제목/계정/URL만 반환. 값 자체는 절대 안 보인다 |
 
 `project` 인자는 **ID와 이름을 모두** 받는다. `"none"`을 주면 미분류만 대상으로 한다.
 내가 멤버가 아닌 프로젝트는 지정할 수 없다. 자세한 계층 구조는 [projects.md](projects.md) 참고.
 
-`list_secrets`는 암호문 필드를 조회하지 않는다. 비밀번호 값은 구조상 MCP로 나갈 수 없다 —
-[security.md](security.md) 참고. 초대/관리자 기능(계정 관리, 초대 발급)은 MCP로 노출하지
-않는다 - 웹 UI(`/admin`)에서만 한다.
+노트 본문은 **어느 방향으로도 변환하지 않는다.** 클로드 코드에서 만든 마크다운 문서를
+`create_note`로 보내면 그 원문이 그대로 저장되고, `get_note`로 읽으면 보낸 그대로 돌아온다.
+표시할 때만 HTML로 렌더한다.
+
+`list_secrets`는 암호문 필드를 조회하지 않는다 — [security.md](security.md) 참고.
+초대/관리자 기능(계정 관리, 초대 발급)은 MCP로 노출하지 않는다 - 웹 UI(`/admin`)에서만 한다.
 
 ## 쓰는 법
 

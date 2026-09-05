@@ -29,7 +29,9 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
   const [shareToken, setShareToken] = useState<string | null>(initial.shareToken);
   const [shareBusy, setShareBusy] = useState(false);
 
-  const contentRef = useRef<unknown>(initial.content);
+  const [body, setBody] = useState(initial.body);
+  // mirrored into a ref so `save` doesn't have to be rebuilt on every keystroke
+  const bodyRef = useRef(body);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // skips the autosave that the initial render would otherwise trigger
   const dirty = useRef(false);
@@ -44,7 +46,7 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
         kind,
         pinned,
         projectId: projectId || null,
-        content: contentRef.current,
+        body: bodyRef.current,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       }),
     });
@@ -196,9 +198,10 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
       )}
 
       <Editor
-        content={initial.content}
-        onChange={(doc) => {
-          contentRef.current = doc;
+        value={body}
+        onChange={(next) => {
+          setBody(next);
+          bodyRef.current = next;
           scheduleSave();
         }}
         onUpload={upload}

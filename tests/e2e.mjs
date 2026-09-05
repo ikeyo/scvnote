@@ -121,22 +121,32 @@ check("rename back", r.body?.project?.name === "ScvNote 개발");
 console.log("\n[notes]");
 const KOREAN = "도커 컴포즈로 NAS 배포 준비";
 const BODY2 = "pg_trgm 인덱스를 추가했다";
+const MARKDOWN = [
+  `# ${KOREAN}`,
+  "",
+  `- ${BODY2}`,
+  "- **굵게** 와 `코드`",
+  "",
+  "```sql",
+  "SELECT 1;",
+  "```",
+].join("\n");
 r = await api("/api/notes", {
   method: "POST", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     kind: "WORKLOG",
     projectId,
     tags: ["docker", "nas"],
-    content: { type: "doc", content: [
-      { type: "paragraph", content: [{ type: "text", text: KOREAN }] },
-      { type: "paragraph", content: [{ type: "text", text: BODY2 }] },
-    ] },
+    body: MARKDOWN,
   }),
 });
 const id = r.body?.note?.id;
 check("create note", r.status === 201 && !!id);
-check("title derived from first line", r.body?.note?.title === KOREAN, r.body?.note?.title);
+check("title derived from the first line, without its # marker", r.body?.note?.title === KOREAN, r.body?.note?.title);
 check("tags connected", r.body?.note?.tags?.length === 2);
+
+r = await api(`/api/notes/${id}`);
+check("the body comes back as the exact markdown that went in", r.body?.note?.body === MARKDOWN, JSON.stringify(r.body?.note?.body));
 
 r = await api(`/api/notes?q=${encodeURIComponent("인덱스")}`);
 check("korean search hits", r.body?.notes?.length === 1, JSON.stringify(r.body).slice(0, 120));
@@ -370,7 +380,7 @@ r = await api("/api/notes", {
   body: JSON.stringify({
     kind: "NOTE",
     tags: ["Docker", "임시태그"],
-    content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "태그 테스트용" }] }] },
+    body: "태그 테스트용",
   }),
 });
 const tagNoteId = r.body?.note?.id;
@@ -588,7 +598,7 @@ m = await rpc("tools/call", { name: "append_to_note", arguments: { id: mcpNoteId
 check("mcp append_to_note", m.body?.result?.isError === false);
 
 m = await rpc("tools/call", { name: "get_note", arguments: { id: mcpNoteId } });
-const full = m.body?.result?.structuredContent?.contentText ?? "";
+const full = m.body?.result?.structuredContent?.body ?? "";
 check("append landed in body", full.includes("이어쓴 내용") && full.includes("두 번째 문단"), JSON.stringify(full));
 
 m = await rpc("tools/call", { name: "create_todo", arguments: { title: "MCP가 노트에 연결한 할 일", noteId: mcpNoteId } });
@@ -724,7 +734,7 @@ check("owner adds bob to the project", r.status === 201);
 
 r = await api("/api/notes", {
   method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "공유 노트", kind: "NOTE", projectId: sharedProjectId, content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "모두가 본다" }] }] } }),
+  body: JSON.stringify({ title: "공유 노트", kind: "NOTE", projectId: sharedProjectId, body: "모두가 본다" }),
 });
 const sharedNoteId = r.body?.note?.id;
 check("admin creates a note in the shared project", r.status === 201);
@@ -737,7 +747,7 @@ check("bob (member) can edit the shared note", r.status === 200);
 
 r = await bob("/api/notes", {
   method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "밥의 개인 노트", kind: "NOTE", content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "비공개" }] }] } }),
+  body: JSON.stringify({ title: "밥의 개인 노트", kind: "NOTE", body: "비공개" }),
 });
 const bobPrivateNoteId = r.body?.note?.id;
 check("bob creates a private (unassigned) note", r.status === 201);

@@ -23,7 +23,7 @@ cd scvnote
 |---|---|
 | 앱 | Next.js 16 (App Router) + TypeScript + Tailwind 4 |
 | DB | PostgreSQL 16 + Prisma 7 (pg 드라이버 어댑터) |
-| 에디터 | TipTap 3 (코드블록 하이라이팅, 스크린샷 붙여넣기) |
+| 에디터 | 마크다운 (원문 그대로 저장, 미리보기, 스크린샷 붙여넣기) |
 | 검색 | Postgres `pg_trgm` GIN 인덱스 |
 | 구조 | 프로젝트 > 카테고리(작업일지·스니펫·노트) > 문서. 미분류가 기본 |
 | 할 일 | 프로젝트별 오류·개선·아이디어 추적. 대기/진행 중/완료 |
@@ -44,7 +44,7 @@ cd scvnote
 | `/todos` | 프로젝트별 할 일. 오류·개선·아이디어를 진행 체크 |
 | `/tags` | 태그 이름 변경·합치기·삭제·미사용 정리 |
 | `/notes` | 프로젝트/카테고리별 목록 · 검색 |
-| `/notes/[id]` | TipTap 에디터. 자동 저장, 태그, 스크린샷 `Ctrl+V` 첨부, 공개 링크 켜기/끄기 |
+| `/notes/[id]` | 마크다운 에디터. 자동 저장, 태그, 스크린샷 `Ctrl+V` 첨부, 공개 링크 켜기/끄기 |
 | `/s/[token]` | 노트의 로그인 없는 읽기 전용 공개 링크 |
 | `/secrets` | 비밀번호 보관함. 서버 키로 암호화 저장, 프로젝트에 넣으면 멤버끼리 공유 |
 | `/api/mcp` | Claude Code / Codex 연동, 계정별 토큰 |
@@ -93,7 +93,8 @@ standalone 출력 설정, 볼륨 권한, DB 호스트명(`localhost` → `db`).
 - `compose.override.yaml` — 로컬 전용, 자동 병합. NAS로 복사 금지
 - `prisma.config.ts` — Prisma 7부터 DB 접속 URL이 `schema.prisma`가 아니라 여기에 있다
 - `src/generated/prisma` — Prisma 생성물. git에 넣지 않으며 `prisma generate`로 재생성된다
-- `src/lib/crypto-client.ts` — **브라우저 전용.** 서버에서 import하면 설계가 깨진다
+- `src/lib/note-render.ts` — 마크다운을 HTML로 만드는 **허용 목록** 렌더러. 공개 공유 페이지가
+  익명 방문자에게 내보내는 경로라, 태그를 늘릴 때는 XSS 경계라는 걸 염두에 둔다
 
 ## 문서
 
