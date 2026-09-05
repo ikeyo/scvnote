@@ -53,7 +53,18 @@ else
   sed_inplace "s#^APP_PORT=.*#APP_PORT=${APP_PORT:-3000}#"
 fi
 
-log "빌드 + 기동 (NAS CPU에 따라 5~15분 걸릴 수 있습니다)"
+# 화면 로고 옆에 찍히는 빌드 번호. 커밋 개수라 커밋할 때마다 저절로 하나씩 올라간다.
+# git을 못 읽는 환경(압축 해제로 받은 경우 등)에서는 날짜로 대신한다.
+if BUILD_NO=$(git rev-list --count HEAD 2>/dev/null); then
+  BUILD_ID="#${BUILD_NO}"
+  BUILD_INFO="$(git rev-parse --short HEAD) · $(date +"%Y-%m-%d %H:%M")"
+else
+  BUILD_ID=$(date +%y%m%d)
+  BUILD_INFO=$(date +"%Y-%m-%d %H:%M")
+fi
+export BUILD_ID BUILD_INFO
+
+log "빌드 + 기동 (빌드 $BUILD_ID, NAS CPU에 따라 5~15분 걸릴 수 있습니다)"
 docker compose up -d --build
 
 log "마이그레이션 확인"

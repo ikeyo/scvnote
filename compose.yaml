@@ -37,6 +37,10 @@ services:
     build:
       context: .
       target: runner
+      args:
+        # setup-nas.sh fills these from git; "dev" when built by hand
+        BUILD_ID: ${BUILD_ID:-dev}
+        BUILD_INFO: ${BUILD_INFO:-}
     image: scvnote-app:latest
     restart: unless-stopped
     depends_on:

@@ -18,7 +18,13 @@ RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+# shown next to the logo. Passed in from the host because .dockerignore keeps
+# .git out of the build context, so the commit can't be read in here.
+ARG BUILD_ID=dev
+ARG BUILD_INFO=
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_BUILD_ID=${BUILD_ID} \
+    NEXT_PUBLIC_BUILD_INFO=${BUILD_INFO}
 RUN npx prisma generate && npm run build
 
 # ---------- migrator: one-shot image that runs `prisma migrate deploy` ----------

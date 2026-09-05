@@ -13,6 +13,12 @@ import {
   type SessionInfo,
 } from "@/lib/types";
 
+// inlined at build time by Next. setup-nas.sh passes the commit count in, so
+// the number goes up by one per commit and names the running image rather than
+// whatever source happens to be checked out.
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
+const BUILD_INFO = process.env.NEXT_PUBLIC_BUILD_INFO || "개발 서버";
+
 /**
  * Projects are the top level of navigation; note kinds (작업일지 / 코드 스니펫 /
  * 일반 노트) hang underneath the project that is currently open.
@@ -106,9 +112,16 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--surface)] p-3">
-      <Link href="/notes" className="px-2 py-1 text-lg font-bold">
-        ScvNote
-      </Link>
+      <div className="flex items-baseline gap-1.5 px-2 py-1">
+        <Link href="/notes" className="text-lg font-bold">
+          ScvNote
+        </Link>
+        {/* which build is actually running - the fastest way to tell whether a
+            NAS update really took effect */}
+        <span className="font-mono text-[10px] text-[var(--muted)]" title={BUILD_INFO}>
+          {BUILD_ID}
+        </span>
+      </div>
 
       <div className="mt-5 flex items-center justify-between px-2">
         <span className="text-xs font-medium tracking-wide text-[var(--muted)]">프로젝트</span>
