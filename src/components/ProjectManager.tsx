@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, ErrorText, Input, Spinner } from "@/components/ui";
 import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
+import { notifyProjectsChanged } from "@/lib/events";
 import type { ProjectSummary, SessionInfo } from "@/lib/types";
 
 export const PALETTE = ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#dc2626", "#0891b2", "#ca8a04"];
@@ -60,6 +61,7 @@ export function ProjectManager() {
       setDescription("");
       setColor(PALETTE[(projects.length + 1) % PALETTE.length]);
       await load();
+      notifyProjectsChanged();
     } else {
       setError((await res.json()).error ?? "생성에 실패했습니다");
     }
@@ -74,6 +76,7 @@ export function ProjectManager() {
     });
     if (!res.ok) setError((await res.json()).error ?? "수정에 실패했습니다");
     await load();
+    notifyProjectsChanged();
   }
 
   async function remove(project: ProjectSummary) {
@@ -87,6 +90,7 @@ export function ProjectManager() {
     const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json()).error ?? "삭제에 실패했습니다");
     await load();
+    notifyProjectsChanged();
   }
 
   return (

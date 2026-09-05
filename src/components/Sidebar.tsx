@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { onProjectsChanged } from "@/lib/events";
 import {
   KIND_LABEL,
   KIND_ORDER,
@@ -24,6 +25,9 @@ export function Sidebar() {
   const [unassigned, setUnassigned] = useState<KindCounts>({ NOTE: 0, WORKLOG: 0, SNIPPET: 0 });
   const [unassignedTodos, setUnassignedTodos] = useState(0);
   const [session, setSession] = useState<SessionInfo | null>(null);
+  // bumped by onProjectsChanged() so the fetch effect below re-runs even
+  // when the route itself hasn't changed (e.g. staying on /projects)
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const currentProject = params.get("project");
   const onTodos = pathname.startsWith("/todos");
@@ -41,7 +45,9 @@ export function Sidebar() {
         setUnassigned(d.unassignedKindCounts);
         setUnassignedTodos(d.unassignedOpenTodos ?? 0);
       });
-  }, [pathname, params]);
+  }, [pathname, params, refreshTick]);
+
+  useEffect(() => onProjectsChanged(() => setRefreshTick((t) => t + 1)), []);
 
   useEffect(() => {
     void fetch("/api/auth/session")
