@@ -47,7 +47,7 @@ export function InviteAcceptForm({ token, invitedBy }: { token: string; invitedB
         />
         <Input
           type="password"
-          placeholder="비밀번호 (8자 이상)"
+          placeholder="비밀번호"
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}

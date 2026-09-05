@@ -2,9 +2,9 @@ import { prisma } from "@/lib/db";
 import { docToText, deriveTitle } from "@/lib/tiptap-text";
 import {
   memberProjectIds,
+  ownedOrMemberWhere,
   requireNoteAccess,
   requireTodoAccess,
-  secretVisibilityWhere,
 } from "@/lib/access";
 import { NOTE_LIST_SELECT, buildNoteWhere, connectTags, parseKind } from "@/lib/notes";
 import { UNASSIGNED, projectFilter, projectSelect, resolveProjectId } from "@/lib/projects";
@@ -503,7 +503,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: "list_secrets",
     title: "비밀번호 항목 목록",
     description:
-      "비밀번호 항목의 제목/계정/URL만 반환한다 - 내 개인 항목과, 내가 멤버인 프로젝트의 공유 항목. 값 자체는 브라우저에서만 복호화되므로 이 도구로는 절대 읽을 수 없다.",
+      "비밀번호 항목의 제목/계정/URL만 반환한다 - 내 미분류 항목과, 내가 멤버인 프로젝트의 항목. 값 자체는 이 도구로 반환하지 않는다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -513,7 +513,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
     async run(args, userId) {
       const q = str(args.q);
-      const and: Prisma.SecretWhereInput[] = [await secretVisibilityWhere(userId)];
+      const and: Prisma.SecretWhereInput[] = [await ownedOrMemberWhere(userId)];
       const pf = await projectFilter(userId, str(args.project));
       if ("projectId" in pf) and.push({ projectId: pf.projectId });
       if (q) {
@@ -530,21 +530,21 @@ export const MCP_TOOLS: McpTool[] = [
         where: { AND: and },
         orderBy: { title: "asc" },
         take: 50,
-        // deliberately excludes secretCipher/secretIv
+        // deliberately excludes valueCipher - the server could decrypt it, so
+        // keeping it out of here is what stops values leaving through MCP
         select: {
           id: true,
           title: true,
           username: true,
           url: true,
           memo: true,
-          shared: true,
           project: { select: { name: true } },
         },
       });
       return {
         count: secrets.length,
         secrets: secrets.map((s) => ({ ...s, project: s.project?.name ?? null })),
-        note: "값은 웹 UI에서 마스터 패스워드로만 열 수 있다. shared=true는 프로젝트 멤버 전원이 여는 공유 항목이다.",
+        note: "값은 웹 UI에서만 볼 수 있다. project가 있는 항목은 그 프로젝트 멤버 전원이 본다.",
       };
     },
   },

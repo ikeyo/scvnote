@@ -38,15 +38,9 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
 });
 
 /**
- * Deleting a project does NOT delete its notes - the FK is ON DELETE SET NULL,
- * so they fall back to each note's owner as a private, unassigned item.
- * Personal secrets (shared=false, grandfathered from before project sharing
- * existed) fall back the same way. Shared secrets can't: nothing can decrypt
- * them once the project - and with it every ProjectVaultKey wrap - is gone,
- * so leaving the row behind would just orphan an undecryptable, invisible
- * item forever. They're deleted outright instead, ahead of the project
- * itself, and the count is returned so the caller can be told what happened.
- * Requires project OWNER or a site admin.
+ * Deleting a project does NOT delete its notes or secrets - the FK is
+ * ON DELETE SET NULL, so they fall back to whoever created them as private,
+ * unassigned items. Requires project OWNER or a site admin.
  */
 export const DELETE = route(async (_req: Request, ctx: Ctx) => {
   const user = await requireUser();
@@ -55,23 +49,14 @@ export const DELETE = route(async (_req: Request, ctx: Ctx) => {
 
   const project = await prisma.project.findUnique({
     where: { id },
-    select: {
-      _count: {
-        select: { notes: true, secrets: { where: { ownerId: user.id, shared: false } } },
-      },
-    },
+    select: { _count: { select: { notes: true, secrets: true } } },
   });
   if (!project) throw new HttpError(404, "프로젝트를 찾을 수 없습니다");
 
-  const [{ count: deletedSharedSecrets }] = await prisma.$transaction([
-    prisma.secret.deleteMany({ where: { projectId: id, shared: true } }),
-    prisma.project.delete({ where: { id } }),
-  ]);
-
+  await prisma.project.delete({ where: { id } });
   return Response.json({
     ok: true,
     unassignedNotes: project._count.notes,
     unassignedSecrets: project._count.secrets,
-    deletedSharedSecrets,
   });
 });

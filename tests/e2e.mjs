@@ -471,44 +471,27 @@ check("path traversal blocked", r.status === 404 || r.status === 400, `status=${
 const noAuth = await fetch(`${BASE}/api/attachments/${stored}`);
 check("attachment requires auth", noAuth.status === 401);
 
-console.log("\n[vault]");
-r = await api("/api/vault");
-check("vault not initialized", r.body?.initialized === false);
-
-r = await api("/api/vault", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    salt: "c2FsdA==", checkCipher: "Y2lwaGVy", checkIv: "aXY=",
-    publicKey: "YWRtaW4tcHVi", privateKeyCipher: "YWRtaW4tcHJpdi1jaXBoZXI=", privateKeyIv: "YWRtaW4tcHJpdi1pdg==",
-  }),
-});
-check("vault init", r.status === 200);
-
-r = await api("/api/vault");
-check("vault init also stores the RSA keypair", r.body?.publicKey === "YWRtaW4tcHVi", JSON.stringify(r.body));
-
-r = await api("/api/vault", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ salt: "b3RoZXI=", checkCipher: "eA==", checkIv: "eQ==" }),
-});
-check("vault salt cannot be overwritten", r.status === 409, JSON.stringify(r.body));
-
 console.log("\n[secrets]");
 r = await api("/api/secrets", {
   method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "NAS 관리자", username: "admin", secretCipher: "AAAA", secretIv: "BBBB" }),
+  body: JSON.stringify({ title: "NAS 관리자", username: "admin", value: "hunter2" }),
 });
 const secretId = r.body?.secret?.id;
 check("create secret", r.status === 201 && !!secretId);
+check("the list payload never carries the value", !JSON.stringify(r.body).includes("hunter2"), JSON.stringify(r.body));
 
 r = await api("/api/secrets", {
   method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "평문 시도", secret: "hunter2" }),
+  body: JSON.stringify({ title: "값 없음" }),
 });
-check("plaintext secret rejected", r.status === 400, JSON.stringify(r.body));
+check("secret without a value rejected", r.status === 400, JSON.stringify(r.body));
+
+r = await api(`/api/secrets/${secretId}/value`);
+check("the value round-trips through server-side encryption", r.body?.value === "hunter2", JSON.stringify(r.body));
 
 r = await api(`/api/secrets?q=${encodeURIComponent("관리자")}`);
 check("secret search", r.body?.secrets?.length === 1);
+check("search results carry no values either", !JSON.stringify(r.body).includes("hunter2"));
 
 console.log("\n[secret edit]");
 r = await api(`/api/secrets/${secretId}`, {
@@ -516,34 +499,30 @@ r = await api(`/api/secrets/${secretId}`, {
   body: JSON.stringify({ title: "NAS 관리자 (변경)", username: "root" }),
 });
 check("edit secret metadata", r.body?.secret?.title === "NAS 관리자 (변경)" && r.body?.secret?.username === "root");
-// the UI leaves the password field blank to mean "keep it" - the cipher must survive
-check("cipher untouched when not resent", r.body?.secret?.secretCipher === "AAAA", r.body?.secret?.secretCipher);
 
-// project membership (= personal vs shared) is fixed at creation now - moving
-// an item means re-encrypting it under a different key, not a metadata edit
+// the UI leaves the password field blank to mean "keep it"
+r = await api(`/api/secrets/${secretId}/value`);
+check("value untouched when not resent", r.body?.value === "hunter2", JSON.stringify(r.body));
+
+r = await api(`/api/secrets/${secretId}`, {
+  method: "PATCH", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ value: "새-비밀번호" }),
+});
+check("replace the value", r.status === 200);
+r = await api(`/api/secrets/${secretId}/value`);
+check("the replaced value comes back", r.body?.value === "새-비밀번호", JSON.stringify(r.body));
+
 r = await api(`/api/secrets/${secretId}`, {
   method: "PATCH", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ projectId }),
 });
-check("assigning a project after creation is rejected", r.status === 400, JSON.stringify(r.body));
+check("move secret into a project", r.body?.secret?.project?.id === projectId, JSON.stringify(r.body?.secret));
 
 r = await api(`/api/secrets/${secretId}`, {
   method: "PATCH", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ projectId: null }),
 });
-check("explicitly unassigning (even to null) is rejected too", r.status === 400, JSON.stringify(r.body));
-
-r = await api(`/api/secrets/${secretId}`, {
-  method: "PATCH", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ secretCipher: "CCCC", secretIv: "DDDD" }),
-});
-check("replace the encrypted value", r.body?.secret?.secretCipher === "CCCC" && r.body?.secret?.secretIv === "DDDD");
-
-r = await api(`/api/secrets/${secretId}`, {
-  method: "PATCH", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ secretCipher: "EEEE" }),
-});
-check("cipher without iv rejected", r.status === 400, JSON.stringify(r.body));
+check("move it back to 미분류", r.body?.secret?.project === null, JSON.stringify(r.body?.secret));
 
 r = await api("/api/secrets/does-not-exist", {
   method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -551,78 +530,8 @@ r = await api("/api/secrets/does-not-exist", {
 });
 check("patch missing secret -> 404", r.status === 404);
 
-console.log("\n[shared secrets - project membership auto-shares]");
-const roster1 = await api(`/api/projects/${projectId}/members`);
-const adminUserId = roster1.body?.members?.[0]?.user?.id;
-check("roster exposes the caller's own public key", roster1.body?.members?.[0]?.user?.vaultPublicKey === "YWRtaW4tcHVi");
-check("sharing starts out disabled", roster1.body?.sharedVaultEnabled === false);
-
-r = await api("/api/secrets", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "공유 전 시도", secretCipher: "AAAA", secretIv: "BBBB", projectId }),
-});
-check("creating a project secret before sharing is enabled is rejected", r.status === 409, JSON.stringify(r.body));
-
-r = await api(`/api/projects/${projectId}/shared-vault`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ wraps: [{ userId: "someone-else", wrappedKey: "eA==" }] }),
-});
-check("enabling sharing without wrapping the caller's own key is rejected", r.status === 400, JSON.stringify(r.body));
-
-r = await api(`/api/projects/${projectId}/shared-vault`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ wraps: [{ userId: adminUserId, wrappedKey: "d3JhcHBlZC1wcm9qZWN0LWtleQ==" }] }),
-});
-check("owner turns sharing on", r.status === 200 && r.body?.granted === 1, JSON.stringify(r.body));
-
-r = await api(`/api/projects/${projectId}/shared-vault`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ wraps: [{ userId: adminUserId, wrappedKey: "again" }] }),
-});
-check("sharing cannot be turned on twice", r.status === 409, JSON.stringify(r.body));
-
-r = await api("/api/vault/shared-keys");
-check(
-  "caller's shared-keys list includes the new project key",
-  r.body?.keys?.some((k) => k.projectId === projectId && k.wrappedKey === "d3JhcHBlZC1wcm9qZWN0LWtleQ=="),
-  JSON.stringify(r.body),
-);
-
-r = await api("/api/secrets", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "공유 서버 비밀번호", secretCipher: "U0hBUkVE", secretIv: "SVY=", projectId }),
-});
-const sharedSecretId = r.body?.secret?.id;
-check("creating a project secret now auto-shares it", r.status === 201 && r.body?.secret?.shared === true, JSON.stringify(r.body));
-
-r = await api(`/api/secrets/${sharedSecretId}`, {
-  method: "PATCH", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ projectId: null }),
-});
-check("a shared secret's project is fixed too", r.status === 400, JSON.stringify(r.body));
-
-console.log("\n[shared secrets - deleting a project deletes its shared secrets]");
-r = await api("/api/projects", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ name: "삭제될 공유 프로젝트" }),
-});
-const doomedProjectId = r.body?.project?.id;
-await api(`/api/projects/${doomedProjectId}/shared-vault`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ wraps: [{ userId: adminUserId, wrappedKey: "ZG9vbWVkLWtleQ==" }] }),
-});
-r = await api("/api/secrets", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ title: "곧 사라질 공유 비밀번호", secretCipher: "AAAA", secretIv: "BBBB", projectId: doomedProjectId }),
-});
-const doomedSecretId = r.body?.secret?.id;
-check("shared secret created in the doomed project", r.status === 201);
-
-r = await api(`/api/projects/${doomedProjectId}`, { method: "DELETE" });
-check("deleting the project reports the shared secret it took with it", r.body?.deletedSharedSecrets === 1, JSON.stringify(r.body));
-
-r = await api(`/api/secrets/${doomedSecretId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "x" }) });
-check("the shared secret is actually gone, not just hidden", r.status === 404);
+r = await api("/api/secrets/does-not-exist/value");
+check("reading a missing secret's value -> 404", r.status === 404);
 
 console.log("\n[mcp]");
 async function rpc(method, params, token = MCP) {
@@ -694,7 +603,11 @@ check("mcp search_notes", m.body?.result?.structuredContent?.count >= 1);
 m = await rpc("tools/call", { name: "list_secrets", arguments: {} });
 const listed = JSON.stringify(m.body?.result?.structuredContent ?? {});
 check("mcp list_secrets returns metadata", listed.includes("NAS 관리자"));
-check("mcp never exposes ciphertext", !listed.includes("secretCipher") && !listed.includes("AAAA"), listed.slice(0, 200));
+check(
+  "mcp never exposes the value, nor its ciphertext",
+  !listed.includes("valueCipher") && !listed.includes("새-비밀번호"),
+  listed.slice(0, 200),
+);
 
 m = await rpc("tools/call", { name: "get_note", arguments: { id: "nope" } });
 check("mcp tool error is in-band", m.body?.result?.isError === true);
@@ -835,59 +748,29 @@ check("admin CANNOT read bob's private note (404, no existence leak)", r.status 
 r = await api("/api/notes");
 check("admin's own note list excludes bob's private note", !r.body?.notes?.some((n) => n.id === bobPrivateNoteId));
 
-console.log("\n[multi-user: personal secrets stay private, project secrets auto-share]");
-r = await bob("/api/vault", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    salt: "Ym9ic2FsdA==", checkCipher: "Ym9iY2lwaGVy", checkIv: "Ym9iaXY=",
-    publicKey: "Ym9iLXB1Yg==", privateKeyCipher: "Ym9iLXByaXYtY2lwaGVy", privateKeyIv: "Ym9iLXByaXYtaXY=",
-  }),
-});
-check("bob sets up his own independent vault (with a keypair)", r.status === 200);
-
-r = await api("/api/secrets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "관리자 개인 비밀번호", secretCipher: "AAAA", secretIv: "BBBB" }) });
+console.log("\n[multi-user: 미분류 비밀번호는 비공개, 프로젝트 비밀번호는 멤버 공유]");
+r = await api("/api/secrets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "관리자 개인 비밀번호", value: "admin-only-pw" }) });
 const adminPersonalSecretId = r.body?.secret?.id;
-check("admin creates a personal (unassigned) secret", r.status === 201);
+check("admin creates an unassigned secret", r.status === 201);
 
 r = await bob("/api/secrets");
-check("bob does NOT see admin's personal secret - individual items stay unshared", !r.body?.secrets?.some((s) => s.id === adminPersonalSecretId), JSON.stringify(r.body?.secrets));
+check("bob does NOT see admin's unassigned secret", !r.body?.secrets?.some((s) => s.id === adminPersonalSecretId), JSON.stringify(r.body?.secrets));
 
-const sharedRoster = await api(`/api/projects/${sharedProjectId}/members`);
-const bobMember = sharedRoster.body?.members?.find((m) => m.user.email === "bob@example.com");
-const adminMember = sharedRoster.body?.members?.find((m) => m.user.email === EMAIL);
+r = await bob(`/api/secrets/${adminPersonalSecretId}/value`);
+check("bob cannot read its value either (404, no existence leak)", r.status === 404);
 
-r = await bob(`/api/projects/${sharedProjectId}/shared-vault`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ wraps: [{ userId: bobMember.user.id, wrappedKey: "x" }] }),
-});
-check("non-owner member cannot turn sharing on", r.status === 403, JSON.stringify(r.body));
-
-r = await api(`/api/projects/${sharedProjectId}/shared-vault`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    wraps: [
-      { userId: adminMember.user.id, wrappedKey: "YWRtaW4td3JhcC1vbi1zaGFyZWQ=" },
-      { userId: bobMember.user.id, wrappedKey: "Ym9iLXdyYXAtb24tc2hhcmVk" },
-    ],
-  }),
-});
-check("owner turns sharing on for both members at once", r.status === 200 && r.body?.granted === 2, JSON.stringify(r.body));
-
-r = await api("/api/secrets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "다중사용자 공유 비밀번호", secretCipher: "AAAA", secretIv: "BBBB", projectId: sharedProjectId }) });
+r = await api("/api/secrets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "팀 서버 비밀번호", value: "team-pw", projectId: sharedProjectId }) });
 const teamSecretId = r.body?.secret?.id;
-check("admin creates a secret in the shared project", r.status === 201 && r.body?.secret?.shared === true);
+check("admin creates a secret in the shared project", r.status === 201);
 
 r = await bob("/api/secrets");
-check("bob (project member) NOW sees the project-shared secret", r.body?.secrets?.some((s) => s.id === teamSecretId), JSON.stringify(r.body?.secrets));
+check("bob (project member) sees the project secret", r.body?.secrets?.some((s) => s.id === teamSecretId), JSON.stringify(r.body?.secrets));
+
+r = await bob(`/api/secrets/${teamSecretId}/value`);
+check("bob can read the project secret's value - no key handoff needed", r.body?.value === "team-pw", JSON.stringify(r.body));
 
 r = await bob(`/api/secrets/${teamSecretId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "밥이 수정한 제목" }) });
-check("bob (member, not just owner) can edit the shared secret - same rule as shared notes", r.status === 200, JSON.stringify(r.body));
-
-r = await bob(`/api/projects/${sharedProjectId}/shared-vault/grant`, {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ userId: adminMember.user.id, wrappedKey: "cmUtZ3JhbnRlZA==" }),
-});
-check("a member holding the key can grant it onward too", r.status === 200, JSON.stringify(r.body));
+check("bob (member, not just owner) can edit it - same rule as shared notes", r.status === 200, JSON.stringify(r.body));
 
 console.log("\n[multi-user: MCP tokens are per-account]");
 r = await bob("/api/mcp-token", { method: "POST" });

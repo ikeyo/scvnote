@@ -21,47 +21,15 @@ model User {
   disabledAt   DateTime?
   createdAt    DateTime @default(now())
 
-  /// 비밀번호 보관함(Secret) 크립토 자료. 키 자체는 브라우저를 벗어나지 않는다.
-  /// base64 salt for PBKDF2 key derivation
-  vaultSalt        String?
-  /// AES-GCM ciphertext of a known probe string, used to verify the master password
-  vaultCheckCipher String?
-  vaultCheckIv     String?
-
-  /// RSA-OAEP 공개키(SPKI, base64). 다른 멤버가 프로젝트 공유 키를 이 사용자에게
-  /// 나눠줄 때 씀 - 공개키라 그대로 노출해도 안전하다.
-  vaultPublicKey String?
-  /// 위 공개키의 짝인 개인키. 이 사용자 본인의 개인 vault 키로 AES-GCM 암호화되어
-  /// 있다 - 서버도, 다른 사용자도 복호화할 수 없다.
-  vaultPrivateKeyCipher String?
-  vaultPrivateKeyIv     String?
-
   /// MCP 인증 토큰의 해시(SHA-256, hex). 평문 토큰은 발급 시 한 번만 보여주고 저장하지 않는다.
   mcpTokenHash String? @unique
 
   projectMemberships ProjectMember[]
-  projectVaultKeys   ProjectVaultKey[]
-  ownedNotes         Note[]            @relation("NoteOwner")
-  ownedTodos         Todo[]            @relation("TodoOwner")
-  ownedSecrets       Secret[]          @relation("SecretOwner")
-  invitesCreated     Invite[]          @relation("InviteCreatedBy")
-  invitesUsed        Invite[]          @relation("InviteUsedBy")
-}
-
-/// 프로젝트마다 하나씩 존재하는 공유 대칭키(AES-256)를, 그 키를 받은 멤버의 공개키로
-/// 다시 감싼(RSA-OAEP) 사본. 이 행이 있어야 그 사용자가 이 프로젝트의 공유 비밀번호를
-/// 열 수 있다 - 멤버여도 이 행이 없으면 못 연다(공유 키를 아직 못 받은 상태).
-model ProjectVaultKey {
-  id        String   @id @default(cuid())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// base64 RSA-OAEP ciphertext of the project's raw AES-256 key
-  wrappedKey String
-  createdAt  DateTime @default(now())
-
-  @@unique([projectId, userId])
+  ownedNotes         Note[]          @relation("NoteOwner")
+  ownedTodos         Todo[]          @relation("TodoOwner")
+  ownedSecrets       Secret[]        @relation("SecretOwner")
+  invitesCreated     Invite[]        @relation("InviteCreatedBy")
+  invitesUsed        Invite[]        @relation("InviteUsedBy")
 }
 
 /// 관리자가 발급하는 1회용 계정 초대. 회원가입 화면 대신 이걸로만 계정이 늘어난다.
@@ -87,8 +55,7 @@ enum ProjectRole {
 }
 
 /// 프로젝트 멤버십. OWNER는 멤버 관리·프로젝트 삭제 권한이 있고, MEMBER는
-/// 그 프로젝트 안의 노트/할 일을 보고 쓸 수 있다. 비밀번호 보관함은 여기 안 걸린다 -
-/// 사용자마다 마스터 패스워드가 달라 같은 암호문을 서로 열 수 없기 때문이다.
+/// 그 프로젝트 안의 노트/할 일/비밀번호를 보고 쓸 수 있다.
 model ProjectMember {
   id     String      @id @default(cuid())
   role   ProjectRole @default(MEMBER)
@@ -116,11 +83,10 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members    ProjectMember[]
-  notes      Note[]
-  todos      Todo[]
-  secrets    Secret[]
-  vaultKeys  ProjectVaultKey[]
+  members ProjectMember[]
+  notes   Note[]
+  todos   Todo[]
+  secrets Secret[]
 
   @@index([archived, name])
 }
@@ -188,31 +154,21 @@ model Attachment {
   @@index([noteId])
 }
 
-/// Credentials. `secretCipher` is encrypted in the browser - the server never
-/// sees the plaintext and cannot decrypt it. See docs/security.md.
-///
-/// 둘 중 하나다:
-/// - `shared = false` (기본값): 소유자 전용. `ownerId`의 개인 vault 키로 암호화되어
-///   있고, `projectId`가 있어도 그건 소유자 본인의 정리용 태그일 뿐 다른 멤버에게
-///   보이지 않는다.
-/// - `shared = true`: 그 `project`의 공유 대칭키로 암호화되어 있고, `ProjectVaultKey`
-///   행을 가진 멤버 전원이 열 수 있다. `projectId`가 반드시 있어야 한다.
+/// 자격증명. 노트/할 일과 똑같은 규칙으로 보인다 - 미분류(projectId = null)는 만든
+/// 사람만, 프로젝트에 넣으면 그 멤버 전원이 본다. 값은 서버 키로만 풀리므로
+/// 데이터베이스나 백업만 새어나가도 열리지 않는다. 자세한 내용은 docs/security.md.
 model Secret {
-  id        String   @id @default(cuid())
-  title     String
-  username  String?
-  url       String?
-  memo      String?
-  /// base64 AES-GCM ciphertext - shared=false면 소유자 키로, true면 프로젝트 공유 키로 암호화
-  secretCipher String
-  /// base64 AES-GCM IV (12 bytes)
-  secretIv     String
-  /// true면 프로젝트 멤버 전원이 열 수 있는 공유 항목. false(기본)면 소유자 전용.
-  shared    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id       String  @id @default(cuid())
+  title    String
+  username String?
+  url      String?
+  memo     String?
+  /// AES-256-GCM 암호문 ("iv:ciphertext:tag", 각각 base64). 서버 키로만 풀린다.
+  valueCipher String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  /// 만든 사람. shared=false일 때만 이 사람이 곧 "볼 수 있는 사람"이다.
+  /// 만든 사람. projectId가 null일 때(미분류) 이 사람만 볼 수 있다.
   ownerId String
   owner   User   @relation("SecretOwner", fields: [ownerId], references: [id], onDelete: Restrict)
 
@@ -221,7 +177,7 @@ model Secret {
 
   @@index([ownerId, title])
   @@index([ownerId, projectId])
-  @@index([projectId, shared])
+  @@index([projectId, title])
 }
 
 /// 할 일의 성격. 오류사항 / 개선사항 / 아이디어 / 일반 할 일.

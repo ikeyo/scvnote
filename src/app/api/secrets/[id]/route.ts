@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
 import { requireSecretAccess } from "@/lib/access";
+import { encryptSecret } from "@/lib/secret-crypto";
+import { resolveProjectId } from "@/lib/projects";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +15,7 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
   await requireSecretAccess(userId, id);
 
-  const body = (await req.json()) as Record<string, string | boolean | undefined>;
-
-  // 프로젝트 소속(=공유 여부)은 만들 때 정해지며 바꿀 수 없다 - 옮기려면 다른 키로
-  // 다시 암호화해야 하므로 메타데이터 수정이 아니다. 새로 만들어 옮기는 쪽을 안내한다.
-  if (body.projectId !== undefined) {
-    throw new HttpError(400, "프로젝트 소속은 바꿀 수 없습니다 - 새로 만들어 옮기세요");
-  }
+  const body = (await req.json()) as Record<string, string | null | undefined>;
 
   const data: Prisma.SecretUpdateInput = {};
   if (typeof body.title === "string") {
@@ -30,17 +26,28 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   if (typeof body.url === "string") data.url = body.url.trim() || null;
   if (typeof body.memo === "string") data.memo = body.memo.trim() || null;
 
-  // cipher and IV must move together or the entry becomes undecryptable
-  if (body.secretCipher !== undefined || body.secretIv !== undefined) {
-    if (!body.secretCipher || !body.secretIv) {
-      throw new HttpError(400, "secretCipher와 secretIv는 함께 보내야 합니다");
-    }
-    data.secretCipher = body.secretCipher as string;
-    data.secretIv = body.secretIv as string;
+  // an absent/blank value means "keep the stored one" - the edit form leaves
+  // the password field empty unless it's being changed
+  if (body.value) data.valueCipher = encryptSecret(body.value);
+
+  if (body.projectId !== undefined) {
+    const projectId = await resolveProjectId(userId, body.projectId);
+    data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
   }
 
-  const updated = await prisma.secret.update({ where: { id }, data });
-  return Response.json({ secret: updated });
+  const secret = await prisma.secret.update({
+    where: { id },
+    data,
+    select: {
+      id: true,
+      title: true,
+      username: true,
+      url: true,
+      memo: true,
+      project: { select: { id: true, name: true, color: true } },
+    },
+  });
+  return Response.json({ secret });
 });
 
 export const DELETE = route(async (_req: Request, ctx: Ctx) => {

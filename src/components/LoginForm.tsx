@@ -51,7 +51,7 @@ export function LoginForm({ setup }: { setup: boolean }) {
         />
         <Input
           type="password"
-          placeholder={setup ? "비밀번호 (8자 이상)" : "비밀번호"}
+          placeholder="비밀번호"
           autoComplete={setup ? "new-password" : "current-password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}

@@ -36,8 +36,7 @@ export type ProjectMemberRow = {
   id: string;
   role: ProjectRoleValue;
   createdAt: string;
-  user: { id: string; email: string; isAdmin: boolean; vaultPublicKey: string | null };
-  hasSharedVaultAccess: boolean;
+  user: { id: string; email: string; isAdmin: boolean };
 };
 
 export type AdminUserRow = {
@@ -142,15 +141,12 @@ export type NoteDetail = {
   attachments: AttachmentInfo[];
 };
 
+/** Metadata only - the value comes from `/api/secrets/[id]/value` on demand. */
 export type SecretRow = {
   id: string;
   title: string;
   username: string | null;
   url: string | null;
   memo: string | null;
-  secretCipher: string;
-  secretIv: string;
-  /** true = encrypted with the project's shared key, visible to every member. */
-  shared: boolean;
   project: ProjectRef | null;
 };

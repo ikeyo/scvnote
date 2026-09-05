@@ -15,7 +15,7 @@ export const POST = route(async (req: Request, ctx: Ctx) => {
   const { token } = await ctx.params;
   const { email, password } = (await req.json()) as { email?: string; password?: string };
   if (!email?.includes("@")) throw new HttpError(400, "이메일 형식이 올바르지 않습니다");
-  if (!password || password.length < 8) throw new HttpError(400, "비밀번호는 8자 이상이어야 합니다");
+  if (!password) throw new HttpError(400, "비밀번호를 입력하세요");
 
   const invite = await prisma.invite.findUnique({ where: { token }, select: { usedAt: true, expiresAt: true } });
   if (!invite) throw new HttpError(404, "존재하지 않는 초대 링크입니다");

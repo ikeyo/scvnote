@@ -5,11 +5,7 @@ import { memberProjectIds } from "@/lib/access";
 /** Sentinel used by the UI and MCP to mean "not assigned to any project". */
 export const UNASSIGNED = "none";
 
-/**
- * `notes`/`todos` counts are the same for every member (the whole project is
- * shared), but `secrets` is scoped to the caller - secrets are never shared,
- * so "how many secrets does this project have" only means "how many of mine".
- */
+/** Every count is project-wide: members see the same notes, todos and secrets. */
 export function projectSelect(userId: string) {
   return {
     id: true,
@@ -20,13 +16,7 @@ export function projectSelect(userId: string) {
     // the caller's own membership row - at most one match, used to surface
     // "am I the owner" (see attachMyRole below) without an N+1 query per project
     members: { where: { userId }, select: { role: true } },
-    _count: {
-      select: {
-        notes: true,
-        todos: true,
-        secrets: { where: { ownerId: userId } },
-      },
-    },
+    _count: { select: { notes: true, todos: true, secrets: true } },
   } as const;
 }
 

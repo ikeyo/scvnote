@@ -4,10 +4,9 @@ import { ProjectRole } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
 /**
- * Project-scoped sharing model: a note/todo with `projectId` set is visible to
- * every member of that project. Unassigned (`projectId = null`) items are
- * private to whoever created them. Secrets are the one exception - see
- * secretVisibilityWhere below.
+ * Project-scoped sharing model, and it applies to everything: a note, todo or
+ * secret with `projectId` set is visible to every member of that project;
+ * unassigned (`projectId = null`) items are private to whoever created them.
  */
 
 export async function memberProjectIds(userId: string): Promise<string[]> {
@@ -26,10 +25,10 @@ export async function projectRole(userId: string, projectId: string): Promise<Pr
   return row?.role ?? null;
 }
 
-/** Notes/todos visible to this user: their own unassigned ones, plus anything in a project they belong to. */
+/** Items visible to this user: their own unassigned ones, plus anything in a project they belong to. */
 export async function ownedOrMemberWhere(
   userId: string,
-): Promise<Prisma.NoteWhereInput & Prisma.TodoWhereInput> {
+): Promise<Prisma.NoteWhereInput & Prisma.TodoWhereInput & Prisma.SecretWhereInput> {
   const projectIds = await memberProjectIds(userId);
   return {
     OR: [
@@ -40,51 +39,24 @@ export async function ownedOrMemberWhere(
 }
 
 /**
- * A secret is visible if the caller owns it (personal, `shared = false`), or
- * it's `shared = true` on a project the caller belongs to. Sharing works via
- * a project key wrapped per-member with public-key crypto - see
- * `src/lib/crypto-client.ts` - rather than the item's own ciphertext, which
- * stays a single AES-GCM blob either way.
- */
-export async function secretVisibilityWhere(userId: string): Promise<Prisma.SecretWhereInput> {
-  const projectIds = await memberProjectIds(userId);
-  return {
-    OR: [
-      { ownerId: userId, shared: false },
-      ...(projectIds.length > 0 ? [{ shared: true, projectId: { in: projectIds } }] : []),
-    ],
-  };
-}
-
-/**
- * Personal secrets: owner only. Shared secrets: any member of their project.
- * 404s (not 403) either way a stranger can't distinguish "doesn't exist"
- * from "not yours".
+ * Same rule as notes and todos. 404s rather than 403s so a stranger can't
+ * distinguish "doesn't exist" from "not yours" by probing ids.
  */
 export async function requireSecretAccess(
   userId: string,
   secretId: string,
-): Promise<{ id: string; ownerId: string; shared: boolean; projectId: string | null }> {
+): Promise<{ id: string; ownerId: string; projectId: string | null }> {
   const secret = await prisma.secret.findUnique({
     where: { id: secretId },
-    select: { id: true, ownerId: true, shared: true, projectId: true },
+    select: { id: true, ownerId: true, projectId: true },
   });
   if (!secret) throw new HttpError(404, "항목을 찾을 수 없습니다");
 
-  const visible = secret.shared
-    ? secret.projectId !== null && (await projectRole(userId, secret.projectId)) !== null
+  const visible = secret.projectId
+    ? (await projectRole(userId, secret.projectId)) !== null
     : secret.ownerId === userId;
   if (!visible) throw new HttpError(404, "항목을 찾을 수 없습니다");
   return secret;
-}
-
-/** Whether this user currently holds this project's shared vault key. */
-export async function hasProjectVaultKey(userId: string, projectId: string): Promise<boolean> {
-  const row = await prisma.projectVaultKey.findUnique({
-    where: { projectId_userId: { projectId, userId } },
-    select: { id: true },
-  });
-  return row !== null;
 }
 
 /**
