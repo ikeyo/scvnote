@@ -24,6 +24,8 @@ export type ProjectSummary = {
   archived: boolean;
   kindCounts: KindCounts;
   openTodos: number;
+  /** This viewer's own role in the project - null should never happen for a project they can see at all. */
+  myRole: "OWNER" | "MEMBER" | null;
   /** `secrets` is scoped to the viewer - it's "how many of mine", not the project total. */
   _count: { notes: number; secrets: number; todos: number };
 };
@@ -34,7 +36,8 @@ export type ProjectMemberRow = {
   id: string;
   role: ProjectRoleValue;
   createdAt: string;
-  user: { id: string; email: string; isAdmin: boolean };
+  user: { id: string; email: string; isAdmin: boolean; vaultPublicKey: string | null };
+  hasSharedVaultAccess: boolean;
 };
 
 export type AdminUserRow = {
@@ -147,5 +150,7 @@ export type SecretRow = {
   memo: string | null;
   secretCipher: string;
   secretIv: string;
+  /** true = encrypted with the project's shared key, visible to every member. */
+  shared: boolean;
   project: ProjectRef | null;
 };

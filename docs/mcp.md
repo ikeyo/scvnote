@@ -49,7 +49,7 @@ codex mcp add scvnote --url http://localhost:3100/api/mcp --bearer-token-env-var
 | `append_to_note` | 기존 노트 끝에 이어쓰기 (작업일지 누적) |
 | `search_notes` | 내가 볼 수 있는 노트에서 제목·본문 검색. `project`로 범위 한정 |
 | `get_note` | ID로 본문 전문 읽기 |
-| `list_secrets` | **내 소유** 비밀번호 항목의 제목/계정/URL만 반환. 다른 사람 것은 절대 안 보인다 |
+| `list_secrets` | 내 개인 항목 + 내가 멤버인 프로젝트의 공유 항목, 제목/계정/URL만 반환. 값 자체는 절대 안 보인다 |
 
 `project` 인자는 **ID와 이름을 모두** 받는다. `"none"`을 주면 미분류만 대상으로 한다.
 내가 멤버가 아닌 프로젝트는 지정할 수 없다. 자세한 계층 구조는 [projects.md](projects.md) 참고.

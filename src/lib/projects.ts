@@ -17,6 +17,9 @@ export function projectSelect(userId: string) {
     description: true,
     color: true,
     archived: true,
+    // the caller's own membership row - at most one match, used to surface
+    // "am I the owner" (see attachMyRole below) without an N+1 query per project
+    members: { where: { userId }, select: { role: true } },
     _count: {
       select: {
         notes: true,
@@ -25,6 +28,14 @@ export function projectSelect(userId: string) {
       },
     },
   } as const;
+}
+
+/** Flattens `projectSelect`'s filtered `members` array into a plain `myRole` field. */
+export function attachMyRole<T extends { members: { role: string }[] }>(
+  project: T,
+): Omit<T, "members"> & { myRole: string | null } {
+  const { members, ...rest } = project;
+  return { ...rest, myRole: members[0]?.role ?? null };
 }
 
 /**

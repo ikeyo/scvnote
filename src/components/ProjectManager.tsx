@@ -83,12 +83,24 @@ export function ProjectManager() {
     const { notes, secrets } = project._count;
     const warning =
       notes + secrets > 0
-        ? `노트 ${notes}건, 내 비밀번호 ${secrets}건이 미분류로 이동합니다. 내용은 지워지지 않습니다.\n\n`
+        ? `노트 ${notes}건, 내 개인 비밀번호 ${secrets}건이 미분류로 이동합니다.\n`
         : "";
-    if (!confirm(`${warning}"${project.name}" 프로젝트를 삭제할까요?`)) return;
+    // 다른 멤버가 만든 공유 비밀번호까지는 삭제 전에 정확한 개수를 알 수 없다 -
+    // 실제 삭제 결과는 DELETE 응답을 받은 뒤 따로 알린다
+    if (
+      !confirm(
+        `${warning}이 프로젝트의 공유 비밀번호는 함께 영구히 삭제되며 되돌릴 수 없습니다.\n\n"${project.name}" 프로젝트를 삭제할까요?`,
+      )
+    )
+      return;
 
     const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
-    if (!res.ok) setError((await res.json()).error ?? "삭제에 실패했습니다");
+    if (!res.ok) {
+      setError((await res.json()).error ?? "삭제에 실패했습니다");
+    } else {
+      const { deletedSharedSecrets } = (await res.json()) as { deletedSharedSecrets: number };
+      if (deletedSharedSecrets > 0) alert(`공유 비밀번호 ${deletedSharedSecrets}건이 함께 삭제되었습니다.`);
+    }
     await load();
     notifyProjectsChanged();
   }
@@ -98,8 +110,9 @@ export function ProjectManager() {
       <h1 className="text-xl font-bold">프로젝트</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
         프로젝트는 가장 큰 단위입니다. 만들면 작업일지 · 코드 스니펫 · 일반 노트 세 카테고리가 함께 생깁니다.
-        프로젝트에 멤버로 초대된 사람은 그 안의 노트/할 일을 함께 봅니다 (비밀번호는 예외 - 각자 것만 보입니다).
-        프로젝트를 지워도 안의 내용은 남고 미분류로 이동합니다.
+        프로젝트에 멤버로 초대된 사람은 그 안의 노트/할 일/비밀번호를 함께 봅니다.
+        프로젝트를 지우면 노트/할 일과 개인 비밀번호는 남아 미분류로 이동하지만,
+        이 프로젝트의 공유 비밀번호는 함께 영구히 삭제됩니다.
       </p>
 
       <form onSubmit={create} className="mt-6 space-y-2 rounded-lg border border-[var(--border)] p-4">

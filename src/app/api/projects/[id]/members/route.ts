@@ -12,21 +12,34 @@ const MEMBER_SELECT = {
   id: true,
   role: true,
   createdAt: true,
-  user: { select: { id: true, email: true, isAdmin: true } },
+  user: { select: { id: true, email: true, isAdmin: true, vaultPublicKey: true } },
 } as const;
 
-/** Any current member can see the roster. */
+/**
+ * Any current member can see the roster. Each entry also carries the
+ * member's public key (needed to hand them the project's shared vault key)
+ * and whether they already hold it - both are what the "공유 비밀번호" panel
+ * on /secrets needs to know who still needs a key.
+ */
 export const GET = route(async (_req: Request, ctx: Ctx) => {
   const user = await requireUser();
   const { id } = await ctx.params;
   await requireProjectMember(user.id, id);
 
-  const members = await prisma.projectMember.findMany({
-    where: { projectId: id },
-    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-    select: MEMBER_SELECT,
+  const [members, vaultKeys] = await Promise.all([
+    prisma.projectMember.findMany({
+      where: { projectId: id },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+      select: MEMBER_SELECT,
+    }),
+    prisma.projectVaultKey.findMany({ where: { projectId: id }, select: { userId: true } }),
+  ]);
+  const hasKey = new Set(vaultKeys.map((k) => k.userId));
+
+  return Response.json({
+    members: members.map((m) => ({ ...m, hasSharedVaultAccess: hasKey.has(m.user.id) })),
+    sharedVaultEnabled: vaultKeys.length > 0,
   });
-  return Response.json({ members });
 });
 
 /** Adds an existing user by email. OWNER or a site admin only. */
@@ -53,5 +66,5 @@ export const POST = route(async (req: Request, ctx: Ctx) => {
       throw err;
     });
 
-  return Response.json({ member }, { status: 201 });
+  return Response.json({ member: { ...member, hasSharedVaultAccess: false } }, { status: 201 });
 });

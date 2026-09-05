@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
 import { memberProjectIds } from "@/lib/access";
-import { projectSelect } from "@/lib/projects";
+import { attachMyRole, projectSelect } from "@/lib/projects";
 import { ProjectRole } from "@/generated/prisma/enums";
 import type { NoteKind } from "@/generated/prisma/enums";
 
@@ -67,7 +67,7 @@ export const GET = route(async (req: Request) => {
 
   return Response.json({
     projects: projects.map((p) => ({
-      ...p,
+      ...attachMyRole(p),
       kindCounts: byProject.get(p.id) ?? emptyCounts(),
       openTodos: openTodos.get(p.id) ?? 0,
     })),
@@ -97,7 +97,7 @@ export const POST = route(async (req: Request) => {
     select: projectSelect(userId),
   });
   return Response.json(
-    { project: { ...project, kindCounts: emptyCounts(), openTodos: 0 } },
+    { project: { ...attachMyRole(project), kindCounts: emptyCounts(), openTodos: 0 } },
     { status: 201 },
   );
 });

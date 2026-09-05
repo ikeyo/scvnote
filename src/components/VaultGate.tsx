@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { Button, ErrorText, Input } from "@/components/ui";
-import { initVault, unlockVault } from "@/lib/crypto-client";
+import {
+  exportPublicKey,
+  generateKeyPair,
+  initVault,
+  unlockVault,
+  wrapPrivateKeyForStorage,
+} from "@/lib/crypto-client";
+import { establishKeyring, type Keyring } from "@/lib/vault-keyring";
 
 type VaultMeta = {
   initialized: boolean;
@@ -11,13 +18,13 @@ type VaultMeta = {
   checkIv: string | null;
 };
 
-/** Collects the master password and hands back the derived key (memory only). */
+/** Collects the master password and hands back the full keyring (memory only). */
 export function VaultGate({
   meta,
   onUnlocked,
 }: {
   meta: VaultMeta;
-  onUnlocked: (key: CryptoKey) => void;
+  onUnlocked: (keyring: Keyring) => void;
 }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -34,19 +41,39 @@ export function VaultGate({
         if (password !== confirm) throw new Error("두 입력이 일치하지 않습니다");
 
         const { salt, checkCipher, checkIv, key } = await initVault(password);
+        // the RSA keypair goes up in this same request - a brand-new vault
+        // can't have been granted any project key yet, so there's nothing
+        // else to fetch afterward (unlike the unlock path below)
+        const pair = await generateKeyPair();
+        const publicKeyB64 = await exportPublicKey(pair.publicKey);
+        const { cipher, iv } = await wrapPrivateKeyForStorage(key, pair.privateKey);
+
         const res = await fetch("/api/vault", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ salt, checkCipher, checkIv }),
+          body: JSON.stringify({
+            salt,
+            checkCipher,
+            checkIv,
+            publicKey: publicKeyB64,
+            privateKeyCipher: cipher,
+            privateKeyIv: iv,
+          }),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "설정에 실패했습니다");
-        onUnlocked(key);
+
+        onUnlocked({
+          personalKey: key,
+          privateKey: pair.privateKey,
+          publicKeyB64,
+          projectKeys: new Map(),
+        });
         return;
       }
 
       const key = await unlockVault(password, meta.salt!, meta.checkCipher!, meta.checkIv!);
       if (!key) throw new Error("마스터 패스워드가 올바르지 않습니다");
-      onUnlocked(key);
+      onUnlocked(await establishKeyring(key));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

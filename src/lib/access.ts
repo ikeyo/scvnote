@@ -40,13 +40,51 @@ export async function ownedOrMemberWhere(
 }
 
 /**
- * Secrets are never shared, even inside a shared project - AES-GCM is
- * symmetric, so two people with different master passwords cannot both hold
- * a key that opens the same ciphertext. `projectId` on a Secret is the
- * owner's own filing label, not a sharing boundary.
+ * A secret is visible if the caller owns it (personal, `shared = false`), or
+ * it's `shared = true` on a project the caller belongs to. Sharing works via
+ * a project key wrapped per-member with public-key crypto - see
+ * `src/lib/crypto-client.ts` - rather than the item's own ciphertext, which
+ * stays a single AES-GCM blob either way.
  */
-export function secretVisibilityWhere(userId: string): Prisma.SecretWhereInput {
-  return { ownerId: userId };
+export async function secretVisibilityWhere(userId: string): Promise<Prisma.SecretWhereInput> {
+  const projectIds = await memberProjectIds(userId);
+  return {
+    OR: [
+      { ownerId: userId, shared: false },
+      ...(projectIds.length > 0 ? [{ shared: true, projectId: { in: projectIds } }] : []),
+    ],
+  };
+}
+
+/**
+ * Personal secrets: owner only. Shared secrets: any member of their project.
+ * 404s (not 403) either way a stranger can't distinguish "doesn't exist"
+ * from "not yours".
+ */
+export async function requireSecretAccess(
+  userId: string,
+  secretId: string,
+): Promise<{ id: string; ownerId: string; shared: boolean; projectId: string | null }> {
+  const secret = await prisma.secret.findUnique({
+    where: { id: secretId },
+    select: { id: true, ownerId: true, shared: true, projectId: true },
+  });
+  if (!secret) throw new HttpError(404, "항목을 찾을 수 없습니다");
+
+  const visible = secret.shared
+    ? secret.projectId !== null && (await projectRole(userId, secret.projectId)) !== null
+    : secret.ownerId === userId;
+  if (!visible) throw new HttpError(404, "항목을 찾을 수 없습니다");
+  return secret;
+}
+
+/** Whether this user currently holds this project's shared vault key. */
+export async function hasProjectVaultKey(userId: string, projectId: string): Promise<boolean> {
+  const row = await prisma.projectVaultKey.findUnique({
+    where: { projectId_userId: { projectId, userId } },
+    select: { id: true },
+  });
+  return row !== null;
 }
 
 /**

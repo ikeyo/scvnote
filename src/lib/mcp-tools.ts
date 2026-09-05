@@ -503,7 +503,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: "list_secrets",
     title: "비밀번호 항목 목록",
     description:
-      "내 비밀번호 항목의 제목/계정/URL만 반환한다. 비밀번호는 사용자마다 독립된 보관함이라 다른 사람의 항목은 보이지 않는다. 값 자체는 브라우저에서만 복호화되므로 이 도구로는 절대 읽을 수 없다.",
+      "비밀번호 항목의 제목/계정/URL만 반환한다 - 내 개인 항목과, 내가 멤버인 프로젝트의 공유 항목. 값 자체는 브라우저에서만 복호화되므로 이 도구로는 절대 읽을 수 없다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -513,7 +513,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
     async run(args, userId) {
       const q = str(args.q);
-      const and: Prisma.SecretWhereInput[] = [secretVisibilityWhere(userId)];
+      const and: Prisma.SecretWhereInput[] = [await secretVisibilityWhere(userId)];
       const pf = await projectFilter(userId, str(args.project));
       if ("projectId" in pf) and.push({ projectId: pf.projectId });
       if (q) {
@@ -537,13 +537,14 @@ export const MCP_TOOLS: McpTool[] = [
           username: true,
           url: true,
           memo: true,
+          shared: true,
           project: { select: { name: true } },
         },
       });
       return {
         count: secrets.length,
         secrets: secrets.map((s) => ({ ...s, project: s.project?.name ?? null })),
-        note: "이 계정 소유의 항목만 보인다. 값은 웹 UI에서 본인 마스터 패스워드로만 열 수 있다.",
+        note: "값은 웹 UI에서 마스터 패스워드로만 열 수 있다. shared=true는 프로젝트 멤버 전원이 여는 공유 항목이다.",
       };
     },
   },
