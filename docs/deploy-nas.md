@@ -99,6 +99,11 @@ service_completed_successfully`(migrate 완료 후 app 시작) 같은 문법을 
 - **`permission denied ... docker.sock`** — SSH 계정에 도커 소켓 권한이 없다. 둘 중 하나로 해결한다
   - `sudo ./scripts/setup-nas.sh` (간단)
   - `sudo synogroup --member docker <계정명>` 으로 docker 그룹에 추가 후 SSH 재접속
+- **로그인이 계속 로그인 화면으로 튕긴다** — NAS는 보통 `http://<IP>:포트`로 접속하지
+  `https://`가 아니다. 세션 쿠키에 `Secure` 속성이 붙어 있으면 브라우저가 저장 자체를
+  거부해서, 로그인은 성공한 것처럼 보여도 세션이 안 남는다. `.env`의 `COOKIE_SECURE`가
+  `false`인지 확인한다 (`setup-nas.sh`로 새로 만든 `.env`는 기본값이 이미 `false`다).
+  Cloudflare Tunnel 등으로 실제 HTTPS를 앞에 붙였을 때만 `true`로 바꾼다
 
 ### 수동으로 하고 싶을 때
 

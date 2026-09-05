@@ -47,6 +47,8 @@ services:
       DATABASE_URL: *db-url
       ATTACHMENTS_DIR: /data/attachments
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required - see .env.example}
+      # only "true" once there's a real HTTPS front door - see .env.example
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - attachments:/data/attachments
     ports:

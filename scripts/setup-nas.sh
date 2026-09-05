@@ -70,11 +70,20 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+# `hostname -I` is a GNU/coreutils extension - Synology's BusyBox shell
+# doesn't have it, so it silently returns nothing there. `ip addr` works on
+# both; try it first and fall back for non-BusyBox systems that lack `ip`.
+IP=$(ip -4 -o addr show scope global 2>/dev/null | awk '{split($4, a, "/"); print a[1]; exit}')
+[ -z "$IP" ] && IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo
 log "완료"
-echo "  로컬:  http://localhost:${PORT}"
-[ -n "${IP:-}" ] && echo "  LAN:   http://${IP}:${PORT}"
+if [ -n "${IP:-}" ]; then
+  echo "  같은 네트워크의 다른 기기에서 이 주소로 접속하세요: http://${IP}:${PORT}"
+else
+  echo "  LAN 주소를 자동으로 찾지 못했습니다 - DSM 제어판에서 NAS의 IP를 확인해"
+  echo "  http://<NAS IP>:${PORT} 로 접속하세요."
+fi
+echo "  (NAS 콘솔에서만 되는 주소: http://localhost:${PORT})"
 echo "  첫 접속 시 화면에서 계정을 만드세요 - 그 계정이 자동으로 관리자가 됩니다."
 echo "  이후 새 계정은 관리자가 /admin 에서 만드는 초대 링크로만 늘어납니다."
 echo "  MCP(Claude Code/Codex) 연동 토큰은 로그인 후 /settings 에서 각자 발급합니다."

@@ -50,7 +50,13 @@ export async function createSession(userId: string): Promise<void> {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // NOT tied to NODE_ENV: a NAS/Tailscale deployment is typically plain
+    // http:// with no TLS terminator in front, and a Secure cookie is
+    // silently dropped by the browser over http - login "succeeds" but the
+    // session never sticks, bouncing straight back to the login screen.
+    // Only set COOKIE_SECURE=true once there's a real HTTPS front door
+    // (Cloudflare Tunnel, reverse proxy with a cert, etc).
+    secure: process.env.COOKIE_SECURE === "true",
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
