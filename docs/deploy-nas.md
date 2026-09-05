@@ -57,6 +57,18 @@ git pull
 
 `.env`는 그대로 재사용되고, 컨테이너만 새로 빌드된다.
 
+**SSH를 매번 켜기 번거로우면 DSM 작업 스케줄러로 등록해둔다.** 한 번 등록하면 이후엔
+SSH 없이 DSM 화면에서 버튼만 눌러 업데이트할 수 있다.
+
+**제어판 → 작업 스케줄러 → 생성 → 사용자 정의 스크립트 (트리거된 작업)**
+- 사용자: root
+- 스크립트:
+  ```bash
+  cd /volume1/docker/scvnote && git pull && ./scripts/setup-nas.sh
+  ```
+
+등록 후 스케줄러 목록에서 **실행** 버튼으로 즉시 업데이트하거나, 일정을 걸어 자동화한다.
+
 ### 3) 확인
 
 ```bash
@@ -84,6 +96,9 @@ service_completed_successfully`(migrate 완료 후 app 시작) 같은 문법을 
 - **빌드가 느리다** — Celeron 계열은 `npm run build` 단계가 특히 느리다. 기다리면 끝난다.
   급하면 아래 "일반 절차"의 B안(로컬 빌드 → tar로 옮기기)으로 바꾼다
 - **스크립트 실행 권한 오류(`Permission denied`)** — `chmod +x scripts/setup-nas.sh` 후 다시 실행
+- **`permission denied ... docker.sock`** — SSH 계정에 도커 소켓 권한이 없다. 둘 중 하나로 해결한다
+  - `sudo ./scripts/setup-nas.sh` (간단)
+  - `sudo synogroup --member docker <계정명>` 으로 docker 그룹에 추가 후 SSH 재접속
 
 ### 수동으로 하고 싶을 때
 
