@@ -36,6 +36,15 @@ if ! docker compose version >/dev/null 2>&1; then
   echo "구버전 docker-compose(v1, 하이픈)는 이 프로젝트가 쓰는 compose 문법을 지원하지 않습니다." >&2
   exit 1
 fi
+# 위 두 검사는 명령이 있는지만 본다 - 도커 데몬에 실제로 닿는지는 별개다.
+# 시놀로지 SSH 계정은 기본적으로 docker.sock 권한이 없어서 여기서 걸린다.
+if ! docker info >/dev/null 2>&1; then
+  echo "도커 데몬에 접속할 수 없습니다 (docker.sock 권한 없음)." >&2
+  echo "둘 중 하나로 해결하세요:" >&2
+  echo "  1) sudo $0        <- 이렇게 다시 실행 (간단, 패스워드를 물어봅니다)" >&2
+  echo "  2) sudo synogroup --member docker $(id -un) 로 docker 그룹에 추가한 뒤 SSH 재접속" >&2
+  exit 1
+fi
 
 if [ -f .env ]; then
   log ".env 이미 있음 - 새로 만들지 않고 그대로 씁니다"
