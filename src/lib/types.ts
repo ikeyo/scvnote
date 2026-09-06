@@ -93,6 +93,8 @@ export type TodoItem = {
   doneAt: string | null;
   project: ProjectRef | null;
   note: { id: string; title: string } | null;
+  /** 본문에서 이 할 일이 가리키는 대목의 인용문. 노트 전체에 붙은 항목은 null. */
+  anchorText: string | null;
 };
 
 export type TagSummary = {

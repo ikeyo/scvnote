@@ -328,6 +328,32 @@ const linkedId = r.body?.todo?.id;
 check("create todo linked to a note", r.status === 201 && r.body?.todo?.note?.id === id, JSON.stringify(r.body?.todo?.note));
 // the note belongs to a project, so the todo should land in the same backlog
 check("linked todo inherits the note's project", r.body?.todo?.project?.id === projectId, JSON.stringify(r.body?.todo?.project));
+check("a todo without an anchor has none", r.body?.todo?.anchorText === null, JSON.stringify(r.body?.todo?.anchorText));
+
+// a todo raised while reviewing one passage quotes it, so the UI can point back
+r = await api("/api/todos", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "이 대목 고치기", kind: "IMPROVEMENT", noteId: id, anchorText: BODY2 }),
+});
+const anchoredId = r.body?.todo?.id;
+check("create todo anchored to a passage", r.status === 201 && r.body?.todo?.anchorText === BODY2, JSON.stringify(r.body?.todo?.anchorText));
+check("the anchor quotes text that is really in the note", MARKDOWN.includes(r.body?.todo?.anchorText ?? "없는값"));
+
+r = await api(`/api/todos?note=${id}`);
+check("the anchor survives a re-read", r.body?.todos?.some((t) => t.anchorText === BODY2), JSON.stringify(r.body?.todos?.map((t) => t.anchorText)));
+
+// an anchor only means something alongside a note - it quotes that note's body
+r = await api("/api/todos", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "노트 없는 할 일", anchorText: "떠도는 인용문" }),
+});
+const strayId = r.body?.todo?.id;
+check("an anchor without a note is dropped", r.status === 201 && r.body?.todo?.anchorText === null, JSON.stringify(r.body?.todo));
+
+// put the fixture back as it was - the counts checked further down assume the
+// note has exactly the one linked todo created above
+await api(`/api/todos/${anchoredId}`, { method: "DELETE" });
+await api(`/api/todos/${strayId}`, { method: "DELETE" });
 
 r = await api(`/api/todos?note=${id}`);
 check("filter todos by note", r.body?.todos?.length === 1 && r.body.todos[0].id === linkedId);

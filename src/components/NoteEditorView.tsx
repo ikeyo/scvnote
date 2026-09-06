@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Editor, type UploadResult } from "@/components/Editor";
+import { Editor, type EditorHandle, type UploadResult } from "@/components/Editor";
 import { NoteTodos } from "@/components/NoteTodos";
 import { Button } from "@/components/ui";
 import {
@@ -30,6 +30,9 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
   const [shareBusy, setShareBusy] = useState(false);
 
   const [body, setBody] = useState(initial.body);
+  // the passage selected in the editor right now, which a new todo can anchor to
+  const [selection, setSelection] = useState("");
+  const editor = useRef<EditorHandle>(null);
   // mirrored into a ref so `save` doesn't have to be rebuilt on every keystroke
   const bodyRef = useRef(body);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,17 +200,32 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
         </p>
       )}
 
-      <Editor
-        value={body}
-        onChange={(next) => {
-          setBody(next);
-          bodyRef.current = next;
-          scheduleSave();
-        }}
-        onUpload={upload}
-      />
+      {/* Wide screens put the todos alongside the note instead of far below it,
+          so a review comment lands next to what it is about. */}
+      <div className="mt-2 gap-8 xl:grid xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+        <Editor
+          ref={editor}
+          value={body}
+          onChange={(next) => {
+            setBody(next);
+            bodyRef.current = next;
+            scheduleSave();
+          }}
+          onUpload={upload}
+          onSelect={setSelection}
+        />
 
-      <NoteTodos noteId={initial.id} initial={initial.todos} />
+        <div className="xl:sticky xl:top-6">
+          <NoteTodos
+            noteId={initial.id}
+            initial={initial.todos}
+            body={body}
+            selection={selection}
+            onJump={(quote) => editor.current?.selectText(quote)}
+            onAnchorUsed={() => setSelection("")}
+          />
+        </div>
+      </div>
 
       {attachments.length > 0 && (
         <section className="mt-10 border-t border-[var(--border)] pt-4">

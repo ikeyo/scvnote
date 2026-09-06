@@ -26,6 +26,7 @@ export const TODO_SELECT = {
   ownerId: true,
   project: { select: { id: true, name: true, color: true } },
   note: { select: { id: true, title: true } },
+  anchorText: true,
 } satisfies Prisma.TodoSelect;
 
 /**

@@ -44,6 +44,7 @@ export const POST = route(async (req: Request) => {
     status?: string;
     projectId?: string | null;
     noteId?: string | null;
+    anchorText?: string | null;
   };
 
   const title = body.title?.trim();
@@ -63,6 +64,8 @@ export const POST = route(async (req: Request) => {
       ownerId: userId,
       projectId,
       noteId: link?.id ?? null,
+      // only meaningful together with a note - it quotes that note's body
+      anchorText: (link && body.anchorText?.trim()) || null,
     },
     select: TODO_SELECT,
   });

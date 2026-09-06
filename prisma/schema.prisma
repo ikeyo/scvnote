@@ -211,6 +211,11 @@ model Todo {
   noteId String?
   note   Note?   @relation(fields: [noteId], references: [id], onDelete: SetNull)
 
+  /// 노트 본문에서 이 할 일이 가리키는 대목을 그대로 인용해 둔 것. 위치를 줄 번호로
+  /// 잡으면 앞에 줄이 추가될 때 조용히 엉뚱한 곳을 가리키므로, 본문에서 이 문장을
+  /// 찾아 위치를 정한다. 그 문장이 고쳐지면 못 찾고, 그건 화면에 그대로 드러난다.
+  anchorText String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   doneAt    DateTime?
