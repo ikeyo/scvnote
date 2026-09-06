@@ -17,6 +17,7 @@ export function ProjectManager() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
+  const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
@@ -54,7 +55,7 @@ export function ProjectManager() {
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description, color }),
+      body: JSON.stringify({ name, description, color, repoUrl }),
     });
     if (res.ok) {
       setName("");
@@ -114,6 +115,12 @@ export function ProjectManager() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+        <Input
+          type="url"
+          placeholder="저장소 주소 (선택) - 넣으면 이 프로젝트 작업일지에 빌드 번호가 붙습니다"
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.target.value)}
+        />
         <div className="flex items-center gap-2 pt-1">
           <ColorPicker value={color} onChange={setColor} />
           <Button type="submit" variant="primary" className="ml-auto" disabled={busy}>
@@ -165,8 +172,19 @@ export function ProjectManager() {
                       {p.name}
                     </Link>
                     {p.archived && <span className="ml-2 text-xs text-[var(--muted)]">보관됨</span>}
+                    {p.repoUrl && (
+                      <a
+                        href={p.repoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="연결된 코드 저장소 - 이 프로젝트의 작업일지에는 빌드 번호가 붙습니다"
+                        className="ml-2 text-xs text-[var(--accent)] hover:underline"
+                      >
+                        저장소
+                      </a>
+                    )}
                     <p className="truncate text-xs text-[var(--muted)]">
-                      노트 {p._count.notes} · 내 비밀번호 {p._count.secrets}
+                      노트 {p._count.notes} · 비밀번호 {p._count.secrets}
                       {p.description ? ` · ${p.description}` : ""}
                     </p>
                   </div>
@@ -231,12 +249,13 @@ function ProjectEditForm({
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
   const [color, setColor] = useState(project.color ?? PALETTE[0]);
+  const [repoUrl, setRepoUrl] = useState(project.repoUrl ?? "");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    await onSave({ name, description, color });
+    await onSave({ name, description, color, repoUrl });
     setBusy(false);
   }
 
@@ -247,6 +266,12 @@ function ProjectEditForm({
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="설명 (선택)"
+      />
+      <Input
+        type="url"
+        value={repoUrl}
+        onChange={(e) => setRepoUrl(e.target.value)}
+        placeholder="저장소 주소 (선택) - 넣으면 이 프로젝트 작업일지에 빌드 번호가 붙습니다"
       />
       <div className="flex items-center gap-2 pt-1">
         <ColorPicker value={color} onChange={setColor} />

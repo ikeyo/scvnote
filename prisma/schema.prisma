@@ -79,6 +79,9 @@ model Project {
   description String?
   /// 사이드바 점 색상 (#rrggbb)
   color       String?
+  /// 이 프로젝트가 어느 코드 저장소의 것인지 (http/https URL). 연결되어 있으면
+  /// 작업일지에 빌드 줄을 요구한다 - 코드와 무관한 프로젝트는 그냥 저장된다.
+  repoUrl     String?
   archived    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

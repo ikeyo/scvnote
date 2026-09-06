@@ -5,6 +5,19 @@ import { memberProjectIds } from "@/lib/access";
 /** Sentinel used by the UI and MCP to mean "not assigned to any project". */
 export const UNASSIGNED = "none";
 
+/**
+ * A linked repository is shown as a link and marks the project as code-backed,
+ * so only schemes that are safe to render are accepted. Returns null for blank.
+ */
+export function parseRepoUrl(value: string | null | undefined): string | null {
+  const url = value?.trim();
+  if (!url) return null;
+  if (!/^https?:\/\/\S+$/i.test(url)) {
+    throw new HttpError(400, "저장소 주소는 http:// 또는 https:// 로 시작해야 합니다");
+  }
+  return url;
+}
+
 /** Every count is project-wide: members see the same notes, todos and secrets. */
 export function projectSelect(userId: string) {
   return {
@@ -12,6 +25,7 @@ export function projectSelect(userId: string) {
     name: true,
     description: true,
     color: true,
+    repoUrl: true,
     archived: true,
     // the caller's own membership row - at most one match, used to surface
     // "am I the owner" (see attachMyRole below) without an N+1 query per project

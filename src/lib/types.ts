@@ -21,6 +21,8 @@ export type ProjectSummary = {
   name: string;
   description: string | null;
   color: string | null;
+  /** 연결된 코드 저장소 주소. 있으면 이 프로젝트의 작업일지는 빌드 줄을 요구한다. */
+  repoUrl: string | null;
   archived: boolean;
   kindCounts: KindCounts;
   openTodos: number;

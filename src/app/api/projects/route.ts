@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
 import { memberProjectIds } from "@/lib/access";
-import { attachMyRole, projectSelect } from "@/lib/projects";
+import { attachMyRole, parseRepoUrl, projectSelect } from "@/lib/projects";
 import { ProjectRole } from "@/generated/prisma/enums";
 import type { NoteKind } from "@/generated/prisma/enums";
 
@@ -91,6 +91,7 @@ export const POST = route(async (req: Request) => {
       name,
       description: body.description?.trim() || null,
       color: body.color?.trim() || null,
+      repoUrl: parseRepoUrl(body.repoUrl),
       // the creator is automatically the owning member
       members: { create: { userId, role: ProjectRole.OWNER } },
     },

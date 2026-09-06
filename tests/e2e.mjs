@@ -83,6 +83,13 @@ r = await api("/api/projects", {
 });
 const otherProjectId = r.body?.project?.id;
 check("second project", r.status === 201 && !!otherProjectId);
+check("a project starts with no repository linked", r.body?.project?.repoUrl === null, JSON.stringify(r.body?.project?.repoUrl));
+
+r = await api(`/api/projects/${otherProjectId}`, {
+  method: "PATCH", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ repoUrl: "javascript:alert(1)" }),
+});
+check("a repo url that isn't http(s) is rejected", r.status === 400, JSON.stringify(r.body));
 
 console.log("\n[project edit]");
 r = await api(`/api/projects/${projectId}`, {
@@ -616,21 +623,34 @@ const mcpTags = m.body?.result?.structuredContent;
 check("mcp list_tags", mcpTags?.tags?.some((t) => t.name === "docker"), JSON.stringify(mcpTags));
 check("list_tags hides unused tags", mcpTags?.tags?.every((t) => t.notes > 0), JSON.stringify(mcpTags));
 
-// a worklog has to say which build it belongs to, so it can be found by that
-// number later. The refusal names what to add, and the caller sends again.
-m = await rpc("tools/call", { name: "create_note", arguments: { text: "MCP로 저장한 작업일지\n\n두 번째 문단", kind: "WORKLOG", tags: ["mcp"] } });
-check("mcp worklog without a build line is refused", m.body?.result?.isError === true, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
+// A worklog in a repo-linked project says which build it belongs to, so it can
+// be found by that number later. Projects with no repository - meeting logs and
+// the like - have no commits to count, so they save as they always did.
+m = await rpc("tools/call", {
+  name: "create_project",
+  arguments: { name: "코드 있는 프로젝트", repoUrl: "https://github.com/ikeyo/scvnote" },
+});
+check("mcp create_project takes a repo url", m.body?.result?.isError === false, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
+
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "빌드 줄 없는 작업일지", kind: "WORKLOG", project: "코드 있는 프로젝트" } });
+check("worklog in a repo-linked project is refused without a build line", m.body?.result?.isError === true, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 100));
 check("the refusal says how to build the line", (m.body?.result?.content?.[0]?.text ?? "").includes("git rev-list --count HEAD"));
 
-m = await rpc("tools/call", { name: "create_note", arguments: { text: "일반 노트는 그대로 저장된다", kind: "NOTE" } });
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "빌드 줄 없는 회의록", kind: "WORKLOG", project: "다른 프로젝트" } });
+check("worklog in a project with no repo saves as before", m.body?.result?.isError === false, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 100));
+
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "미분류 작업일지도 그냥 저장", kind: "WORKLOG" } });
+check("an unassigned worklog saves as before", m.body?.result?.isError === false);
+
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "일반 노트는 그대로 저장된다", kind: "NOTE", project: "코드 있는 프로젝트" } });
 check("a plain note needs no build line", m.body?.result?.isError === false, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
 
-m = await rpc("tools/call", { name: "create_note", arguments: { text: "## 빌드 #13 · 7fdcf61 · 14:20\n\nMCP로 저장한 작업일지\n\n두 번째 문단", kind: "WORKLOG", tags: ["mcp"] } });
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "## 빌드 #13 · 7fdcf61 · 14:20\n\nMCP로 저장한 작업일지\n\n두 번째 문단", kind: "WORKLOG", tags: ["mcp"], project: "코드 있는 프로젝트" } });
 const mcpNoteId = m.body?.result?.structuredContent?.id;
 check("mcp create_note (with the build line)", !!mcpNoteId && m.body?.result?.isError === false);
 
 m = await rpc("tools/call", { name: "append_to_note", arguments: { id: mcpNoteId, text: "이어쓴 내용" } });
-check("appending to a worklog needs its own build line too", m.body?.result?.isError === true);
+check("appending to that worklog needs its own build line too", m.body?.result?.isError === true);
 
 m = await rpc("tools/call", { name: "append_to_note", arguments: { id: mcpNoteId, text: "## 빌드 #14 · abc1234 · 15:00\n\n이어쓴 내용" } });
 check("mcp append_to_note", m.body?.result?.isError === false, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
@@ -666,7 +686,8 @@ check("unknown tool -> rpc error", m.body?.error?.code === -32602);
 console.log("\n[mcp projects]");
 m = await rpc("tools/call", { name: "list_projects", arguments: {} });
 const projList = m.body?.result?.structuredContent;
-check("mcp list_projects", projList?.count === 2, JSON.stringify(projList).slice(0, 150));
+// ScvNote 개발 / 다른 프로젝트 / 코드 있는 프로젝트 (the repo-linked one above)
+check("mcp list_projects", projList?.count === 3, JSON.stringify(projList).slice(0, 150));
 
 m = await rpc("tools/call", { name: "create_project", arguments: { name: "MCP가 만든 프로젝트" } });
 check("mcp create_project", m.body?.result?.isError === false);

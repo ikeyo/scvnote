@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { HttpError, route } from "@/lib/api";
 import { requireProjectOwner } from "@/lib/access";
-import { attachMyRole, projectSelect } from "@/lib/projects";
+import { attachMyRole, parseRepoUrl, projectSelect } from "@/lib/projects";
 import type { Prisma } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,7 @@ export const PATCH = route(async (req: Request, ctx: Ctx) => {
   }
   if (typeof body.description === "string") data.description = body.description.trim() || null;
   if (typeof body.color === "string") data.color = body.color.trim() || null;
+  if (typeof body.repoUrl === "string") data.repoUrl = parseRepoUrl(body.repoUrl);
   if (typeof body.archived === "boolean") data.archived = body.archived;
 
   const project = await prisma.project
