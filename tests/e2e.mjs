@@ -616,12 +616,24 @@ const mcpTags = m.body?.result?.structuredContent;
 check("mcp list_tags", mcpTags?.tags?.some((t) => t.name === "docker"), JSON.stringify(mcpTags));
 check("list_tags hides unused tags", mcpTags?.tags?.every((t) => t.notes > 0), JSON.stringify(mcpTags));
 
+// a worklog has to say which build it belongs to, so it can be found by that
+// number later. The refusal names what to add, and the caller sends again.
 m = await rpc("tools/call", { name: "create_note", arguments: { text: "MCP로 저장한 작업일지\n\n두 번째 문단", kind: "WORKLOG", tags: ["mcp"] } });
+check("mcp worklog without a build line is refused", m.body?.result?.isError === true, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
+check("the refusal says how to build the line", (m.body?.result?.content?.[0]?.text ?? "").includes("git rev-list --count HEAD"));
+
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "일반 노트는 그대로 저장된다", kind: "NOTE" } });
+check("a plain note needs no build line", m.body?.result?.isError === false, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
+
+m = await rpc("tools/call", { name: "create_note", arguments: { text: "## 빌드 #13 · 7fdcf61 · 14:20\n\nMCP로 저장한 작업일지\n\n두 번째 문단", kind: "WORKLOG", tags: ["mcp"] } });
 const mcpNoteId = m.body?.result?.structuredContent?.id;
-check("mcp create_note", !!mcpNoteId && m.body?.result?.isError === false);
+check("mcp create_note (with the build line)", !!mcpNoteId && m.body?.result?.isError === false);
 
 m = await rpc("tools/call", { name: "append_to_note", arguments: { id: mcpNoteId, text: "이어쓴 내용" } });
-check("mcp append_to_note", m.body?.result?.isError === false);
+check("appending to a worklog needs its own build line too", m.body?.result?.isError === true);
+
+m = await rpc("tools/call", { name: "append_to_note", arguments: { id: mcpNoteId, text: "## 빌드 #14 · abc1234 · 15:00\n\n이어쓴 내용" } });
+check("mcp append_to_note", m.body?.result?.isError === false, JSON.stringify(m.body?.result?.content?.[0]?.text)?.slice(0, 80));
 
 m = await rpc("tools/call", { name: "get_note", arguments: { id: mcpNoteId } });
 const full = m.body?.result?.structuredContent?.body ?? "";

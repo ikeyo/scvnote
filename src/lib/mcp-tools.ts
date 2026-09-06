@@ -32,6 +32,25 @@ const str = (v: unknown): string | undefined =>
 const strArray = (v: unknown): string[] | undefined =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined;
 
+/**
+ * A worklog says which build its work went into, so "빌드 #13에 뭐가 들어갔나"
+ * can be answered by searching for that number later. The client is the only
+ * side that can count commits, so the server can't fill this in - it refuses
+ * the write instead and says exactly what to add. The caller reads that back,
+ * runs the two commands, and sends again.
+ */
+const BUILD_STAMP = /^\s*#{0,6}\s*빌드\s*#\d+/m;
+
+function requireBuildStamp(text: string): void {
+  if (BUILD_STAMP.test(text)) return;
+  throw new Error(
+    "작업일지에는 빌드 줄이 필요합니다. 본문 첫 줄에 아래 형식을 넣어 다시 보내세요:\n" +
+      "  ## 빌드 #<커밋수> · <짧은해시> · <시각>\n" +
+      "커밋수는 `git rev-list --count HEAD`, 짧은해시는 `git rev-parse --short HEAD`로 구합니다.\n" +
+      "(작업일지 kind=WORKLOG에만 해당합니다. 일반 노트·스니펫은 그대로 저장됩니다.)",
+  );
+}
+
 /** Shared so every tool documents the same project semantics. */
 const PROJECT_ARG = {
   type: "string",
@@ -301,7 +320,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: "create_note",
     title: "노트 생성",
     description:
-      "새 노트를 만든다. 본문은 마크다운을 그대로 넣으면 되고, 변환 없이 원문 그대로 저장된다. 작업일지는 kind=WORKLOG, 코드 조각은 kind=SNIPPET을 쓴다. 비밀번호는 저장할 수 없다.",
+      "새 노트를 만든다. 본문은 마크다운을 그대로 넣으면 되고, 변환 없이 원문 그대로 저장된다. 작업일지는 kind=WORKLOG, 코드 조각은 kind=SNIPPET을 쓴다. 작업일지는 본문 첫 줄에 `## 빌드 #<커밋수> · <짧은해시> · <시각>` 이 있어야 저장된다(없으면 거부하고 알려준다). 비밀번호는 저장할 수 없다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -315,9 +334,12 @@ export const MCP_TOOLS: McpTool[] = [
     },
     async run(args, userId) {
       const text = str(args.text) ?? "";
+      const kind = parseKind(str(args.kind)) ?? NoteKind.NOTE;
+      if (kind === NoteKind.WORKLOG) requireBuildStamp(text);
+
       const note = await prisma.note.create({
         data: {
-          kind: parseKind(str(args.kind)) ?? NoteKind.NOTE,
+          kind,
           title: str(args.title) ?? deriveTitle(text),
           body: text,
           tags: connectTags(strArray(args.tags)),
@@ -333,7 +355,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: "append_to_note",
     title: "노트에 이어쓰기",
     description:
-      "기존 노트 본문 끝에 마크다운을 덧붙인다(빈 줄로 구분해서 붙는다). 작업일지 누적에 쓴다. 내가 볼 수 있는 노트만 가능하다.",
+      "기존 노트 본문 끝에 마크다운을 덧붙인다(빈 줄로 구분해서 붙는다). 작업일지 누적에 쓴다 - 이때도 덧붙이는 글 첫 줄에 빌드 줄이 있어야 한다. 내가 볼 수 있는 노트만 가능하다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -348,7 +370,12 @@ export const MCP_TOOLS: McpTool[] = [
       if (!id || !text) throw new Error("id와 text가 필요합니다");
       await requireNoteAccess(userId, id);
 
-      const existing = await prisma.note.findUniqueOrThrow({ where: { id }, select: { body: true } });
+      const existing = await prisma.note.findUniqueOrThrow({
+        where: { id },
+        select: { body: true, kind: true },
+      });
+      // each appended session is its own entry, so it carries its own build line
+      if (existing.kind === NoteKind.WORKLOG) requireBuildStamp(text);
       // a blank line between, so appended markdown starts its own block
       const body = existing.body ? `${existing.body.trimEnd()}\n\n${text}` : text;
       const note = await prisma.note.update({
