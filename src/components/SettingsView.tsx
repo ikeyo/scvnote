@@ -38,7 +38,7 @@ export function SettingsView() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
+    <div className="page">
       <h1 className="text-xl font-bold">설정</h1>
       {session?.email && <p className="mt-1 text-sm text-[var(--muted)]">{session.email}</p>}
 

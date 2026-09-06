@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { renderNoteHtml } from "@/lib/note-render";
 
 export type UploadResult = { url: string; originalName: string };
@@ -26,6 +26,16 @@ export function Editor({
   const [preview, setPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
+
+  // Grow to fit the text instead of scrolling inside a fixed box - a long note
+  // then scrolls with the page, and the todos and attachments below it stay
+  // reachable rather than being stranded under a nested scrollbar.
+  useEffect(() => {
+    const el = textarea.current;
+    if (!el || preview) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, preview]);
 
   function insertAtCursor(snippet: string) {
     const el = textarea.current;
@@ -71,7 +81,7 @@ export function Editor({
           // renderNoteHtml is an allowlist renderer (src/lib/note-render.ts) -
           // every tag is chosen explicitly and all text is escaped, so this is
           // not raw user HTML
-          className="note-body min-h-[24rem]"
+          className="note-body min-h-[60vh]"
           dangerouslySetInnerHTML={{ __html: renderNoteHtml(value) }}
         />
       ) : (
@@ -93,7 +103,7 @@ export function Editor({
           }}
           placeholder="여기에 마크다운으로 작성하세요. 스크린샷은 Ctrl+V로 붙여넣습니다."
           spellCheck={false}
-          className="min-h-[24rem] w-full resize-y bg-transparent font-mono text-sm leading-relaxed outline-none placeholder:text-[var(--muted)]"
+          className="min-h-[60vh] w-full resize-none overflow-hidden bg-transparent font-mono text-sm leading-relaxed outline-none placeholder:text-[var(--muted)]"
         />
       )}
     </div>

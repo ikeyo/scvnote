@@ -125,7 +125,7 @@ export function TodoBoard({ initialProject }: { initialProject?: string }) {
   const byStatus = (s: TodoStatusValue) => todos.filter((t) => t.status === s);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <div className="min-w-0">
         {scopeLabel && (
           <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">

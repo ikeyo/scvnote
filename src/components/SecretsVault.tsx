@@ -38,7 +38,7 @@ export function SecretsVault() {
   }, [query, load]);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-bold">비밀번호</h1>
         <Button variant="primary" onClick={() => setAdding(true)}>

@@ -83,8 +83,14 @@ function renderNode(node: Node): string {
       return `<ul>${renderChildren(node.content)}</ul>`;
     case "orderedList":
       return `<ol>${renderChildren(node.content)}</ol>`;
-    case "listItem":
-      return `<li>${renderChildren(node.content)}</li>`;
+    case "listItem": {
+      // "- [x] 한 일" keeps its box, read-only: editing happens in the markdown
+      const checked = node.attrs?.checked;
+      if (typeof checked !== "boolean") return `<li>${renderChildren(node.content)}</li>`;
+      return `<li class="task"><span class="box" aria-hidden="true">${
+        checked ? "☑" : "☐"
+      }</span>${renderChildren(node.content)}</li>`;
+    }
     case "blockquote":
       return `<blockquote>${renderChildren(node.content)}</blockquote>`;
     case "codeBlock": {

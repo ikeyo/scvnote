@@ -82,7 +82,7 @@ export function TagManager() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-bold">태그</h1>
         {unusedCount > 0 && <Button onClick={sweepUnused}>미사용 {unusedCount}개 정리</Button>}

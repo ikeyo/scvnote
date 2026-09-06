@@ -94,7 +94,7 @@ export function ProjectManager() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <h1 className="text-xl font-bold">프로젝트</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
         프로젝트는 가장 큰 단위입니다. 만들면 작업일지 · 코드 스니펫 · 일반 노트 세 카테고리가 함께 생깁니다.

@@ -72,7 +72,7 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <h1 className="text-xl font-bold">관리자</h1>
       <ErrorText>{error}</ErrorText>
 

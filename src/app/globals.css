@@ -42,11 +42,22 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* -------------------------------- layout --------------------------------- */
+
+/* One column for every screen, so nothing jumps around as you navigate.
+   Wide enough that a big monitor isn't mostly empty margin, capped so lines
+   of prose don't run on forever. */
+.page {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding: 2rem 1.5rem;
+}
+
 /* ------------------------------- editor ---------------------------------- */
 
 .note-body {
   outline: none;
-  min-height: 24rem;
   line-height: 1.7;
 }
 .note-body > * + * { margin-top: 0.75em; }
@@ -56,6 +67,11 @@ body {
 .note-body ul { list-style: disc; padding-left: 1.5rem; }
 .note-body ol { list-style: decimal; padding-left: 1.5rem; }
 .note-body li > p { margin: 0; }
+/* "- [x] 한 일" - the box replaces the bullet. The first paragraph goes inline
+   so the box sits beside the text; a nested list after it still starts a block. */
+.note-body li.task { list-style: none; margin-left: -1.25rem; }
+.note-body li.task > .box { margin-right: 0.4rem; color: var(--muted); }
+.note-body li.task > p:first-of-type { display: inline; }
 .note-body blockquote {
   border-left: 3px solid var(--border);
   padding-left: 1rem;

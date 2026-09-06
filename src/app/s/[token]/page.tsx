@@ -29,7 +29,7 @@ export default async function SharedNotePage({ params }: PageProps<"/s/[token]">
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-2xl px-6 py-12">
+    <main className="page min-h-screen">
       <p className="text-xs text-[var(--muted)]">
         {KIND_LABEL[note.kind as NoteKindValue]} · 읽기 전용 공개 링크 ·{" "}
         {new Date(note.updatedAt).toLocaleDateString("ko-KR")} 수정

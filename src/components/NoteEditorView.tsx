@@ -123,7 +123,7 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <select
           value={projectId}

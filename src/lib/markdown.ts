@@ -47,7 +47,9 @@ const RULE = /^(-{3,}|\*{3,}|_{3,})$/;
 const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 
 /** One flat list entry, before nesting is rebuilt from the indent. */
-type ListEntry = { indent: number; ordered: boolean; lines: string[] };
+type ListEntry = { indent: number; ordered: boolean; checked?: boolean; lines: string[] };
+
+const TASK_MARK = /^\[([ xX])\]\s+(.*)$/;
 
 export function markdownToDoc(markdown: string): { type: "doc"; content: Node[] } {
   const content = parseBlocks(markdown.replace(/\r\n?/g, "\n").split("\n"));
@@ -176,7 +178,14 @@ function collectList(lines: string[], start: number): { entries: ListEntry[]; ne
         // "- a" then "1. b" is two lists, not one - leave the rest to the caller
         break;
       }
-      entries.push({ indent, ordered, lines: [match[3]] });
+      // "- [ ] 할 일" / "- [x] 끝난 일"
+      const task = TASK_MARK.exec(match[3]);
+      entries.push({
+        indent,
+        ordered,
+        ...(task ? { checked: task[1] !== " " } : {}),
+        lines: [task ? task[2] : match[3]],
+      });
       i++;
       continue;
     }
@@ -215,6 +224,7 @@ function buildList(entries: ListEntry[], from: number): Node {
     }
     items.push({
       type: "listItem",
+      ...(entries[i].checked === undefined ? {} : { attrs: { checked: entries[i].checked } }),
       content: [{ type: "paragraph", content: parseParagraph(entries[i].lines) }],
     });
     i++;
@@ -225,7 +235,10 @@ function buildList(entries: ListEntry[], from: number): Node {
 
 /** Inline patterns, tried at every position - the earliest match wins, ties by order. */
 const INLINE_RULES: { re: RegExp; build: (m: RegExpExecArray) => Node[] }[] = [
-  // code first: nothing else applies inside a code span
+  // a backslash makes the next punctuation literal: "\*" is an asterisk, not
+  // the start of emphasis. First in the list so a tie goes to the escape.
+  { re: /\\([\\`*_~[\]()#+\-.!>])/, build: (m) => [{ type: "text", text: m[1] }] },
+  // code next: nothing else applies inside a code span
   { re: /`([^`\n]+)`/, build: (m) => [{ type: "text", text: m[1], marks: [{ type: "code" }] }] },
   {
     // the URL may itself contain one level of parens - "…/Foo_(bar)" and, less
@@ -233,11 +246,17 @@ const INLINE_RULES: { re: RegExp; build: (m: RegExpExecArray) => Node[] }[] = [
     re: /\[([^\]]+)\]\(([^()\s]*(?:\([^()]*\)[^()\s]*)*)\)/,
     build: (m) => withMark(parseInline(m[1]), { type: "link", attrs: { href: m[2] } }),
   },
-  { re: /\*\*([^*]+)\*\*/, build: (m) => withMark(parseInline(m[1]), { type: "bold" }) },
-  { re: /__([^_]+)__/, build: (m) => withMark(parseInline(m[1]), { type: "bold" }) },
-  { re: /~~([^~]+)~~/, build: (m) => withMark(parseInline(m[1]), { type: "strike" }) },
-  { re: /\*([^*\n]+)\*/, build: (m) => withMark(parseInline(m[1]), { type: "italic" }) },
-  { re: /(?<![\w])_([^_\n]+)_(?![\w])/, build: (m) => withMark(parseInline(m[1]), { type: "italic" }) },
+  // Emphasis never opens on whitespace and never closes on it, so "2 * 3 * 4"
+  // and "rm -rf *" stay literal. The bold patterns are lazy and allow inner
+  // markers, so "**굵은 데 *기울임* 도**" keeps its nested emphasis.
+  { re: /\*\*(?!\s)([\s\S]+?)\*\*/, build: (m) => withMark(parseInline(m[1]), { type: "bold" }) },
+  { re: /__(?!\s)([\s\S]+?)__/, build: (m) => withMark(parseInline(m[1]), { type: "bold" }) },
+  { re: /~~(?!\s)([^~]*[^\s~])~~/, build: (m) => withMark(parseInline(m[1]), { type: "strike" }) },
+  { re: /\*(?!\s)([^*\n]*[^\s*])\*/, build: (m) => withMark(parseInline(m[1]), { type: "italic" }) },
+  {
+    re: /(?<!\w)_(?!\s)([^_\n]*[^\s_])_(?!\w)/,
+    build: (m) => withMark(parseInline(m[1]), { type: "italic" }),
+  },
 ];
 
 function withMark(nodes: Node[], mark: Mark): Node[] {

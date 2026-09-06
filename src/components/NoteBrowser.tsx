@@ -90,7 +90,7 @@ export function NoteBrowser({
   const kindLabel = initialKind ? KIND_LABEL[initialKind as NoteKindValue] : null;
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="page">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           {projectLabel && (
