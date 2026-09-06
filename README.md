@@ -105,3 +105,4 @@ standalone 출력 설정, 볼륨 권한, DB 호스트명(`localhost` → `db`).
 - [NAS 배포](docs/deploy-nas.md)
 - [비밀번호 저장 설계](docs/security.md)
 - [Claude 연동 (MCP)](docs/mcp.md)
+- [빌드 번호별 변경 내역](docs/builds.md)
