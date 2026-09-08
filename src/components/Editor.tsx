@@ -5,8 +5,16 @@ import { renderNoteHtml } from "@/lib/note-render";
 
 export type UploadResult = { url: string; originalName: string };
 
-/** Lets the page jump the editor to a passage a todo is anchored to. */
-export type EditorHandle = { selectText: (quote: string) => boolean };
+export type EditorHandle = {
+  /** Jumps to the passage a todo is anchored to. */
+  selectText: (quote: string) => boolean;
+  /** Drops a link to an already-uploaded file in at the cursor. */
+  insertLink: (name: string, url: string, isImage: boolean) => void;
+};
+
+/** Markdown for a file link - images render inline, everything else downloads. */
+const fileLink = (name: string, url: string, isImage: boolean) =>
+  `\n${isImage ? "!" : ""}[${name}](${url})\n`;
 
 /** Anchors quote at most this much, so a todo row stays readable. */
 const MAX_ANCHOR = 300;
@@ -49,6 +57,7 @@ export function Editor({
   const [preview, setPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
   // set when a jump arrives while the preview is open - the textarea has to
   // exist before it can be selected, so the effect below finishes the job
   const pendingJump = useRef<string | null>(null);
@@ -70,6 +79,10 @@ export function Editor({
   }, [value, preview]);
 
   useImperativeHandle(ref, () => ({
+    insertLink(name, url, isImage) {
+      setPreview(false); // the caret only exists in the textarea
+      insertAtCursor(fileLink(name, url, isImage));
+    },
     selectText(quote) {
       if (!value.includes(quote)) return false;
       if (preview) {
@@ -115,8 +128,7 @@ export function Editor({
     for (const file of files) {
       const result = await onUpload(file);
       if (!result) continue;
-      const isImage = file.type.startsWith("image/");
-      insertAtCursor(`\n${isImage ? "!" : ""}[${result.originalName}](${result.url})\n`);
+      insertAtCursor(fileLink(result.originalName, result.url, file.type.startsWith("image/")));
     }
     setUploading(false);
   }
@@ -134,6 +146,26 @@ export function Editor({
         >
           {preview ? "편집" : "미리보기"}
         </button>
+        {/* the dialog route - pasting and dropping still work, but neither
+            helps when the file is just sitting in a folder */}
+        <button
+          type="button"
+          onClick={() => filePicker.current?.click()}
+          className="rounded border border-[var(--border)] px-2 py-1 hover:bg-[var(--surface)]"
+        >
+          파일 첨부
+        </button>
+        <input
+          ref={filePicker}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = ""; // so picking the same file twice still fires
+            if (files.length > 0) void insertFiles(files);
+          }}
+        />
         <span>본문을 선택하면 그 대목에 할 일을 달 수 있습니다. 스크린샷은 Ctrl+V.</span>
         {uploading && <span className="text-[var(--accent)]">올리는 중…</span>}
       </div>

@@ -244,9 +244,22 @@ export function NoteEditorView({ initial }: { initial: NoteDetail }) {
                 <span className="shrink-0 text-xs text-[var(--muted)]">
                   {(a.size / 1024).toFixed(0)} KB
                 </span>
+                {/* a link deleted out of the body can be put back from here */}
+                <button
+                  onClick={() =>
+                    editor.current?.insertLink(
+                      a.originalName,
+                      `/api/attachments/${a.storedName}`,
+                      a.mimeType.startsWith("image/"),
+                    )
+                  }
+                  className="ml-auto shrink-0 text-xs text-[var(--muted)] hover:text-[var(--accent)]"
+                >
+                  본문에 넣기
+                </button>
                 <button
                   onClick={() => removeAttachment(a)}
-                  className="ml-auto shrink-0 text-xs text-[var(--muted)] hover:text-[var(--danger)]"
+                  className="shrink-0 text-xs text-[var(--muted)] hover:text-[var(--danger)]"
                 >
                   삭제
                 </button>
