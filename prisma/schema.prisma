@@ -21,15 +21,31 @@ model User {
   disabledAt   DateTime?
   createdAt    DateTime @default(now())
 
-  /// MCP 인증 토큰의 해시(SHA-256, hex). 평문 토큰은 발급 시 한 번만 보여주고 저장하지 않는다.
-  mcpTokenHash String? @unique
-
+  mcpTokens          McpToken[]
   projectMemberships ProjectMember[]
   ownedNotes         Note[]          @relation("NoteOwner")
   ownedTodos         Todo[]          @relation("TodoOwner")
   ownedSecrets       Secret[]        @relation("SecretOwner")
   invitesCreated     Invite[]        @relation("InviteCreatedBy")
   invitesUsed        Invite[]        @relation("InviteUsedBy")
+}
+
+/// MCP 클라이언트가 쓰는 인증 토큰. 기기마다 하나씩 발급해서, 새 PC를 붙일 때 기존
+/// 연결을 끊지 않아도 되고 기기를 잃으면 그것만 지울 수 있다.
+model McpToken {
+  id String @id @default(cuid())
+  /// 어느 기기 것인지 알아보려고 붙이는 이름 ("집 PC" 등)
+  label String
+  /// SHA-256 hex. 평문은 발급 시 한 번만 보여주고 저장하지 않는다.
+  tokenHash String @unique
+  createdAt DateTime @default(now())
+  /// 마지막으로 이 토큰이 쓰인 시각. 어느 것을 지워도 되는지 판단하는 근거다.
+  lastUsedAt DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// 관리자가 발급하는 1회용 계정 초대. 회원가입 화면 대신 이걸로만 계정이 늘어난다.

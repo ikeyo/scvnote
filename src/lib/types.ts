@@ -58,6 +58,14 @@ export type InviteRow = {
   usedBy: { email: string } | null;
 };
 
+/** 토큰 값 자체는 발급 직후 한 번 말고는 어디에서도 나오지 않는다. */
+export type McpTokenRow = {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
 export type SessionInfo = {
   authenticated: boolean;
   isAdmin: boolean;

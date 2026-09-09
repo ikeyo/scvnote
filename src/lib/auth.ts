@@ -160,10 +160,17 @@ export function hashMcpToken(token: string): string {
 
 export async function userIdForMcpToken(token: string): Promise<string | null> {
   if (!token) return null;
-  const user = await prisma.user.findUnique({
-    where: { mcpTokenHash: hashMcpToken(token) },
-    select: { id: true, disabledAt: true },
+  const row = await prisma.mcpToken.findUnique({
+    where: { tokenHash: hashMcpToken(token) },
+    select: { id: true, user: { select: { id: true, disabledAt: true } } },
   });
-  if (!user || user.disabledAt) return null;
-  return user.id;
+  if (!row || row.user.disabledAt) return null;
+
+  // 어느 토큰이 아직 쓰이는지 보여주려고 기록한다. 응답을 붙잡아 둘 값은 아니므로
+  // 기다리지 않고, 실패해도 인증 자체를 막지 않는다.
+  void prisma.mcpToken
+    .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+    .catch(() => {});
+
+  return row.user.id;
 }

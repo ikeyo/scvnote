@@ -59,9 +59,51 @@ r = await api("/api/auth/login", {
 });
 check("login succeeds", r.status === 200 && cookie.length > 20);
 
-r = await api("/api/mcp-token", { method: "POST" });
+r = await api("/api/mcp-token", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ label: "테스트 PC" }),
+});
 MCP = r.body?.token;
-check("issue this account's own MCP token", r.status === 200 && typeof MCP === "string" && MCP.length === 64);
+check("issue this account's own MCP token", r.status === 201 && typeof MCP === "string" && MCP.length === 64);
+check("the issued token is labelled", r.body?.created?.label === "테스트 PC", JSON.stringify(r.body?.created));
+
+// a second machine gets its own token instead of displacing the first
+r = await api("/api/mcp-token", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ label: "노트북" }),
+});
+const secondToken = r.body?.token;
+const secondTokenId = r.body?.created?.id;
+check("a second token can be issued", r.status === 201 && secondToken !== MCP);
+
+r = await api("/api/mcp-token");
+check("both tokens are listed", r.body?.tokens?.length === 2, JSON.stringify(r.body?.tokens));
+check("the list never carries the token itself", !JSON.stringify(r.body).includes(MCP));
+
+/** Whether a raw token still authenticates against the MCP endpoint. */
+async function tokenWorks(token) {
+  const res = await fetch(`${BASE}/api/mcp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+  return res.status === 200;
+}
+
+check("the first token still works after the second was issued", await tokenWorks(MCP));
+check("the second token works too", await tokenWorks(secondToken));
+
+r = await api("/api/mcp-token");
+const used = r.body?.tokens?.find((t) => t.id === secondTokenId);
+check("using a token stamps when it was last used", !!used?.lastUsedAt, JSON.stringify(used));
+
+r = await api(`/api/mcp-token?id=${secondTokenId}`, { method: "DELETE" });
+check("revoke one token", r.status === 200);
+check("the revoked token stops working", !(await tokenWorks(secondToken)));
+check("the other one is untouched", await tokenWorks(MCP));
+
+r = await api("/api/mcp-token?id=does-not-exist", { method: "DELETE" });
+check("revoking an unknown token -> 404", r.status === 404);
 
 console.log("\n[projects]");
 r = await api("/api/projects", {
